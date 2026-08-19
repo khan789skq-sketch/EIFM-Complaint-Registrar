@@ -70,13 +70,13 @@ def create_ppm_equipment_task_sheet(*args, **kwargs):
   ws["A2"].alignment = align_center
   ws.row_dimensions[2].height = 22
 
-  # Metadata
+  # Metadata Table Structure (Including Client Name)
   meta_structure = [
       (
           "Site / Building Name:",
           meta.get("building", ""),
-          "Fiscal Year:",
-          "2026",
+          "Client Name:",
+          meta.get("client_name", ""),
       ),
       (
           "Location / Zone:",
@@ -119,7 +119,7 @@ def create_ppm_equipment_task_sheet(*args, **kwargs):
     for col in range(1, 7):
       ws.cell(row=r_idx, column=col).border = border_all_thin
 
-  # Headers Row
+  # Table Headers
   headers = [
       "Sl. No.",
       "Service Specification Task / Equipment Check",
@@ -202,7 +202,7 @@ def create_ppm_equipment_task_sheet(*args, **kwargs):
 
   current_row += 1
 
-  # Report / WCC Summary
+  # Report Summary Box
   ws.row_dimensions[current_row].height = 20
   ws.merge_cells(
       start_row=current_row,
@@ -232,9 +232,11 @@ def create_ppm_equipment_task_sheet(*args, **kwargs):
     for col in range(1, 7):
       ws.cell(row=current_row, column=col).border = border_all_thin
 
-  wb.save("PPM_Equipment_Task_Sheet.xlsx")
+  file_path = "PPM_Equipment_Task_Sheet.xlsx"
+  wb.save(file_path)
+  return file_path
 
 
 def create_preventive_maintenance_sheet():
   create_ppm_equipment_task_sheet()
-    
+  
