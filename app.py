@@ -1,322 +1,207 @@
-import streamlit as st
-import pandas as pd
-from docx import Document
-from docx.shared import Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-from io import BytesIO
-import datetime
+import openpyxl
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
-# ---------------------------------------------------------
-# 1. PAGE CONFIG & EIFM BRANDING
-# ---------------------------------------------------------
-st.set_page_config(page_title="EIFM Document Portal", page_icon="🏢", layout="wide")
 
-st.markdown("""
-    <style>
-    .main { background-color: #FFFFFF; }
-    h1, h2, h3 { color: #0A5C36 !important; font-family: 'Arial', sans-serif; }
-    .stButton>button { background-color: #0A5C36; color: white; font-weight: bold; border-radius: 6px; }
-    .header-box { background-color: #F0F7F4; padding: 15px; border-left: 6px solid #0A5C36; margin-bottom: 20px; }
-    </style>
-""", unsafe_allow_html=True)
+def create_ppm_equipment_task_sheet(equipment_list=None):
+  wb = openpyxl.Workbook()
+  ws = wb.active
+  ws.title = "PPM Task Sheet"
+  ws.views.sheetView[0].showGridLines = True
 
-# ---------------------------------------------------------
-# 2. MASTER DATA (BUILDINGS & EQUIPMENTS)
-# ---------------------------------------------------------
-SITES_LIST = [
-    "The Jewels Tower", "Liv Residence", "Prime Business", "Alfa Building", "Al Riffa", 
-    "Al Makhool", "Al Ghilani", "Al Findi", "Sobha Daffodil", "Sobha Sapphire", 
-    "Sobha Ivory 1", "Sobha Ivory 2", "Al Nahda 1", "Al Nahda 2", "Al Safiya", 
-    "Al Barsha", "Square 334", "Red Residence", "Champion Tower", "Frankfurt Tower", 
-    "Avenue Residence 2", "Al Qasimiya", "Westbury Residency", "Roya Bank", 
-    "Al Mamzar", "Vezul", "11 Villa", "Anantara"
-]
+  # 1. Set Column Widths
+  col_widths = {"A": 8, "B": 45, "C": 10, "D": 10, "E": 25, "F": 22}
+  for col, width in col_widths.items():
+    ws.column_dimensions[col].width = width
 
-EQUIPMENT_LIST = [
-    'FCU', 'Split', 'FAHU', 'Plumbing Service', 'Dosing', 'MDB', 'SMDB', 'DB', 
-    'ATS', 'VFD', 'Garbage', 'Heater', 'Intercom', 'Ex Fan', 'Str Prss Un', 
-    'Capacitor bank', 'GB', 'Transfer Pump', 'Sump', 'Booster Pump', 
-    'Chilled water pump', 'Filter pump', 'Chiller', 'Generator', 'SMA', 'Sliding'
-]
+  # 2. Set Styles
+  thin = Side(border_style="thin", color="000000")
+  border_all_thin = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-# Standard tasks mapped for all equipment types if excel sheet isn't loaded
-DEFAULT_EQUIPMENT_TASKS = {
-    'FCU': [
-        "Condition of Blower and Cooling Coil",
-        "Check condition of Motor for abnormal noise/vibration",
-        "Check and clean evaporator drain pan",
-        "Check electrical wiring connection, tight if required",
-        "Check the function of actuator, proper closing and opening",
-        "Clean drain with compressed air or nitrogen",
-        "Check for Joint/Pipe Leak or insulation leaks",
-        "Check and service Air Filter",
-        "Servicing of complete system",
-        "Check thermostat and valve operation status"
-    ],
-    'Split': [
-        "Clean indoor unit air filters and evaporator coil",
-        "Check outdoor unit condenser coil and clean",
-        "Check refrigerant pressure and gas leaks",
-        "Inspect electrical terminals and connections",
-        "Check compressor operating current/amperage",
-        "Clean condensate drain line and tray"
-    ],
-    'FAHU': [
-        "Inspect supply/exhaust fan motors and belts",
-        "Check heat recovery wheel / heat exchanger condition",
-        "Inspect pre-filters, bag filters and replace if needed",
-        "Check chilled water valves and actuators",
-        "Inspect electrical control panel and VFD operation"
-    ]
-}
+  fill_dark_header = PatternFill(
+      start_color="1F497D", end_color="1F497D", fill_type="solid"
+  )
+  fill_sub_header = PatternFill(
+      start_color="DCE6F1", end_color="DCE6F1", fill_type="solid"
+  )
+  fill_notice = PatternFill(
+      start_color="F2DCDB", end_color="F2DCDB", fill_type="solid"
+  )
 
-# Generic fallback tasks for remaining equipments
-GENERIC_TASKS = [
-    "Visual inspection of equipment condition and mounting",
-    "Check all electrical connections and terminal tightness",
-    "Clean equipment body, filters, and surroundings",
-    "Check for abnormal noise, vibration, or overheating",
-    "Inspect valves, pipe joints, and pressure gauges",
-    "Verify operational sequence and control settings",
-    "Test safety trips and emergency shutdown controls",
-    "Record voltage, current, and operating pressure",
-    "Apply lubrication to bearings/moving parts where required",
-    "Final functional testing and system sign-off"
-]
+  font_main_header = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
+  font_sub_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+  font_bold = Font(name="Calibri", size=10, bold=True, color="000000")
+  font_regular = Font(name="Calibri", size=10, color="000000")
+  font_notice = Font(
+      name="Calibri", size=9, bold=True, italic=True, color="C00000"
+  )
 
-# Header Title
-st.markdown("""
-    <div class="header-box">
-        <h2 style="margin:0;">EMIRATES INTERNATIONAL FACILITIES MANAGEMENT</h2>
-        <p style="margin:0; color:#555;">PPM & Work Completion Document Generator</p>
-    </div>
-""", unsafe_allow_html=True)
+  align_center = Alignment(
+      horizontal="center", vertical="center", wrap_text=True
+  )
+  align_left = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-# ---------------------------------------------------------
-# 3. MODE SELECTION
-# ---------------------------------------------------------
-doc_mode = st.radio("**Select Document Type:**", ["PPM Document (WCC Front Page + Exact Task Sheet Below)", "Normal Work Completion Certificate (General WCC)"], horizontal=True)
+  # 3. Main Title
+  ws.merge_cells("A1:F1")
+  ws["A1"] = "EMIRATES INTERNATIONAL FACILITIES MANAGEMENT"
+  ws["A1"].font = font_main_header
+  ws["A1"].fill = fill_dark_header
+  ws["A1"].alignment = align_center
+  ws.row_dimensions[1].height = 28
 
-# ---------------------------------------------------------
-# OPTION A: PPM DOCUMENT WITH EXACT TASK SHEET MATCHING IMAGE
-# ---------------------------------------------------------
-if "PPM Document" in doc_mode:
-    st.subheader("📋 PPM Integrated Report Generator")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        job_order = st.text_input("Job Order / WO Number", value="WO-2026-001")
-        client_name = st.text_input("Client Name", value="Asteco Property Management")
-        project_name = st.selectbox("Select Building / Project", SITES_LIST)
-        location = st.text_input("Location / Area", value="Main Building / Plant Room")
-        unit_no = st.text_input("Unit Number", value="Common Area")
-        tel_no = st.text_input("Tel No.", value="")
+  # Sub Title
+  ws.merge_cells("A2:F2")
+  ws["A2"] = "PREVENTIVE MAINTENANCE TASK SHEET"
+  ws["A2"].font = Font(name="Calibri", size=12, bold=True, color="1F497D")
+  ws["A2"].alignment = align_center
+  ws.row_dimensions[2].height = 22
 
-    with col2:
-        comp_date = st.date_input("Date of Service", datetime.date.today())
-        frequency = st.selectbox("Frequency", ["Monthly", "Quarterly", "Semi-Annual", "Annual"], index=1)
-        category_type = st.selectbox("Category", ["HVAC", "Electrical", "Plumbing", "Civil", "Specialist"], index=0)
-        selected_equipments = st.multiselect("Select Equipments for Checklist", EQUIPMENT_LIST, default=['FCU', 'Split'])
-        site_incharge = st.text_input("Site In-Charge", value="")
-        hod_name = st.text_input("HOD Name", value="")
+  # 4. Metadata Rows
+  meta_structure = [
+      ("Project Name:", "", "Fiscal Year:", "2026"),
+      ("Location:", "", "WO Number:", ""),
+      ("Unit Number:", "", "Scheduled Month:", ""),
+      ("Frequency:", "", "Date of Service:", ""),
+      ("Category:", "", "Time Start:", ""),
+      ("Equipment Type:", "", "Time Finish:", ""),
+  ]
 
-    st.markdown("---")
-    st.markdown("### 🛠️ Work Details & Extra Observations")
-    work_details = st.text_area("Details of Work", value="Planned Preventive Maintenance Service Completed as per attached Check List.")
-    remarks = st.text_area("Remarks / Suggestions (Blank Lines for Print)", value=".......................................................................................................\n.......................................................................................................")
+  for r_idx, row_data in enumerate(meta_structure, start=3):
+    ws.row_dimensions[r_idx].height = 20
+    ws.cell(row=r_idx, column=1, value=row_data[0]).font = font_bold
+    ws.cell(row=r_idx, column=1).alignment = align_left
+    ws.cell(row=r_idx, column=1).fill = fill_sub_header
 
-    def create_ppm_combined_doc():
-        doc = Document()
-        
-        # --- PAGE 1: WCC FRONT PAGE ---
-        title = doc.add_heading('WORK COMPLETION CERTIFICATE', level=1)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        t_wcc = doc.add_table(rows=5, cols=2)
-        t_wcc.style = 'Table Grid'
-        t_wcc.cell(0, 0).text = f"Job Order Number: {job_order}"
-        t_wcc.cell(0, 1).text = f"Date: {comp_date}"
-        t_wcc.cell(1, 0).text = f"Client: {client_name}"
-        t_wcc.cell(1, 1).text = f"Tel No: {tel_no}"
-        t_wcc.cell(2, 0).text = f"Project: {project_name}"
-        t_wcc.cell(2, 1).text = f"Location: {location}"
-        t_wcc.cell(3, 0).text = f"Site In-Charge: {site_incharge}"
-        t_wcc.cell(3, 1).text = f"HOD Name: {hod_name}"
-        t_wcc.cell(4, 0).merge(t_wcc.cell(4, 1)).text = f"Details of Work:\n{work_details}\n\nRemarks:\n{remarks}"
+    ws.merge_cells(start_row=r_idx, start_column=2, end_row=r_idx, end_column=3)
+    ws.cell(row=r_idx, column=2, value=row_data[1]).font = font_regular
 
-        doc.add_paragraph("\nClient Signature: ______________________    Date: ____/____/______")
-        
-        footer = doc.add_paragraph("\nP.O Box 2286, Abu Dhabi – United Arab Emirates - Tel: +971-2-6436663 | E-mail: eifm@eifm.ae")
-        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    ws.cell(row=r_idx, column=4, value=row_data[2]).font = font_bold
+    ws.cell(row=r_idx, column=4).alignment = align_left
+    ws.cell(row=r_idx, column=4).fill = fill_sub_header
 
-        # --- PAGE 2 ONWARDS: EXACT PREVENTIVE MAINTENANCE TASK SHEET FOR EACH SELECTED EQUIPMENT ---
-        for eq in selected_equipments:
-            doc.add_page_break()
-            
-            # Title
-            h = doc.add_heading('Preventive Maintenance Task Sheet', level=1)
-            h.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            
-            # 1. Metadata Box (Same structure as Excel image)
-            t_meta = doc.add_table(rows=6, cols=4)
-            t_meta.style = 'Table Grid'
-            
-            t_meta.cell(0, 0).text = "Project Name"
-            t_meta.cell(0, 1).text = str(project_name)
-            t_meta.cell(0, 2).text = "Fiscal Year"
-            t_meta.cell(0, 3).text = str(comp_date.year)
-            
-            t_meta.cell(1, 0).text = "Location"
-            t_meta.cell(1, 1).text = str(location)
-            t_meta.cell(1, 2).text = "WO Number"
-            t_meta.cell(1, 3).text = str(job_order)
-            
-            t_meta.cell(2, 0).text = "Unit Number"
-            t_meta.cell(2, 1).text = str(unit_no)
-            t_meta.cell(2, 2).text = "Scheduled Month"
-            t_meta.cell(2, 3).text = comp_date.strftime("%B")
-            
-            t_meta.cell(3, 0).text = "Frequency"
-            t_meta.cell(3, 1).text = str(frequency)
-            t_meta.cell(3, 2).text = "Date of Service"
-            t_meta.cell(3, 3).text = str(comp_date)
-            
-            t_meta.cell(4, 0).text = "Category"
-            t_meta.cell(4, 1).text = str(category_type)
-            t_meta.cell(4, 2).text = "Time Start"
-            t_meta.cell(4, 3).text = "________"
-            
-            t_meta.cell(5, 0).text = "Equipment Type"
-            t_meta.cell(5, 1).text = str(eq)
-            t_meta.cell(5, 2).text = "Time Finish"
-            t_meta.cell(5, 3).text = "________"
+    ws.merge_cells(start_row=r_idx, start_column=5, end_row=r_idx, end_column=6)
+    ws.cell(row=r_idx, column=5, value=row_data[3]).font = font_regular
 
-            doc.add_paragraph("") # Space
+    for col in range(1, 7):
+      ws.cell(row=r_idx, column=col).border = border_all_thin
 
-            # 2. Main Tasks Table (Columns: Sl. No | Service Specification Task | OK | Not OK | Remarks | Follow up W.O.)
-            t_task = doc.add_table(rows=1, cols=6)
-            t_task.style = 'Table Grid'
-            hdr = t_task.rows[0].cells
-            hdr[0].text = 'Sl. No.'
-            hdr[1].text = 'Service Specification Task'
-            hdr[2].text = 'OK'
-            hdr[3].text = 'Not OK'
-            hdr[4].text = 'Remarks'
-            hdr[5].text = 'Follow up W.O. if needed'
+  # 5. Headers Row
+  headers = [
+      "Sl. No.",
+      "Service Specification Task / Equipment Check",
+      "OK",
+      "Not OK",
+      "Remarks",
+      "Follow up WO if needed",
+  ]
+  ws.row_dimensions[9].height = 26
+  for c_idx, h_text in enumerate(headers, start=1):
+    cell = ws.cell(row=9, column=c_idx, value=h_text)
+    cell.font = font_sub_header
+    cell.fill = fill_dark_header
+    cell.alignment = align_center
+    cell.border = border_all_thin
 
-            # Try Excel sheet first, fallback to mapped/generic tasks
-            tasks = []
-            try:
-                df = pd.read_excel('All-3.xlsx', sheet_name=eq)
-                tasks = df.iloc[8:19, 1].dropna().tolist()
-            except:
-                pass
-            
-            if not tasks:
-                tasks = DEFAULT_EQUIPMENT_TASKS.get(eq, GENERIC_TASKS)
+  # 6. Checklist Tasks
+  items = equipment_list if equipment_list else [""] * 15
+  current_row = 10
 
-            for idx, task in enumerate(tasks, 1):
-                row = t_task.add_row().cells
-                row[0].text = str(idx)
-                row[1].text = str(task)
-                row[2].text = "[  ]"
-                row[3].text = "[  ]"
-                row[4].text = ""
-                row[5].text = ""
+  for idx, task_name in enumerate(items, start=1):
+    ws.row_dimensions[current_row].height = 22
+    ws.cell(row=current_row, column=1, value=idx).alignment = align_center
+    ws.cell(row=current_row, column=1).font = font_regular
 
-            # 3. General Notice
-            doc.add_paragraph("")
-            notice_p = doc.add_paragraph()
-            r = notice_p.add_run("GENERAL NOTICE: Appropriate PPE is to be worn at all times ensuring works are carried out in pairs where access is limited and/or at height. All works will be scheduled in advance and the occupier/tenant must be informed prior to the service.")
-            r.font.size = Pt(8)
-            r.font.italic = True
-            r.font.color.rgb = RGBColor(200, 0, 0)
+    ws.cell(row=current_row, column=2, value=task_name).alignment = align_left
+    ws.cell(row=current_row, column=2).font = font_regular
 
-            # 4. Signatures & Report Summary Box (Matching Image Bottom)
-            t_sign = doc.add_table(rows=2, cols=2)
-            t_sign.style = 'Table Grid'
-            t_sign.cell(0, 0).text = "Tech. Date/Sign:"
-            t_sign.cell(0, 1).text = "Eng./Sup Date Sign:"
-            t_sign.cell(1, 0).merge(t_sign.cell(1, 1)).text = "REPORT SUMMARY OF MAINTENANCE:\n\n\n\n"
+    for col in range(1, 7):
+      ws.cell(row=current_row, column=col).border = border_all_thin
+    current_row += 1
 
-        bio = BytesIO()
-        doc.save(bio)
-        return bio.getvalue()
+  # 7. General Notice
+  ws.merge_cells(
+      start_row=current_row,
+      start_column=1,
+      end_row=current_row,
+      end_column=6,
+  )
+  ws.row_dimensions[current_row].height = 32
+  notice_cell = ws.cell(row=current_row, column=1)
+  notice_cell.value = (
+      "GENERAL NOTICE: Appropriate PPE is to be worn at all times ensuring"
+      " works are carried out in pairs where access is limited and/or at height."
+      " All works will be scheduled in advance and the occupier/tenant must be"
+      " informed prior to the service."
+  )
+  notice_cell.font = font_notice
+  notice_cell.alignment = align_center
+  notice_cell.fill = fill_notice
+  for col in range(1, 7):
+    ws.cell(row=current_row, column=col).border = border_all_thin
 
-    st.markdown("---")
-    file_data = create_ppm_combined_doc()
-    st.download_button(
-        label="📥 Download Complete PPM Document (.docx)",
-        data=file_data,
-        file_name=f"PPM_Report_{project_name}_{comp_date}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  current_row += 1
+
+  # 8. Signatures
+  ws.row_dimensions[current_row].height = 24
+  ws.merge_cells(
+      start_row=current_row,
+      start_column=1,
+      end_row=current_row,
+      end_column=3,
+  )
+  ws.merge_cells(
+      start_row=current_row,
+      start_column=4,
+      end_row=current_row,
+      end_column=6,
+  )
+  ws.cell(
+      row=current_row, column=1, value="Tech. Date/Sign: _______________________"
+  ).font = font_bold
+  ws.cell(
+      row=current_row,
+      column=4,
+      value="Eng./Sup Date Sign: _______________________",
+  ).font = font_bold
+  for col in range(1, 7):
+    ws.cell(row=current_row, column=col).border = border_all_thin
+
+  current_row += 1
+
+  # 9. Maintenance Summary Section
+  ws.row_dimensions[current_row].height = 20
+  ws.merge_cells(
+      start_row=current_row,
+      start_column=1,
+      end_row=current_row,
+      end_column=6,
+  )
+  sum_cell = ws.cell(
+      row=current_row, column=1, value="REPORT SUMMARY OF MAINTENANCE:"
+  )
+  sum_cell.font = font_bold
+  sum_cell.fill = fill_sub_header
+  for col in range(1, 7):
+    ws.cell(row=current_row, column=col).border = border_all_thin
+
+  for _ in range(4):
+    current_row += 1
+    ws.row_dimensions[current_row].height = 20
+    ws.merge_cells(
+        start_row=current_row,
+        start_column=1,
+        end_row=current_row,
+        end_column=6,
     )
+    for col in range(1, 7):
+      ws.cell(row=current_row, column=col).border = border_all_thin
 
-# ---------------------------------------------------------
-# OPTION B: NORMAL WORK COMPLETION CERTIFICATE (GENERAL WCC)
-# ---------------------------------------------------------
-else:
-    st.subheader("📄 Normal Work Completion Certificate Generator")
+  wb.save("PPM_Equipment_Task_Sheet.xlsx")
+
+
+def create_preventive_maintenance_sheet():
+  create_ppm_equipment_task_sheet()
+
+
+if __name__ == "__main__":
+  create_ppm_equipment_task_sheet()
     
-    col1, col2 = st.columns(2)
-    with col1:
-        g_job = st.text_input("Job Order Number", value="")
-        g_client = st.text_input("Client Name", value="")
-        g_project = st.selectbox("Select Building / Project", SITES_LIST)
-        g_loc = st.text_input("Location / Unit No.", value="")
-        g_tel = st.text_input("Tel No.", value="")
-
-    with col2:
-        g_date = st.date_input("Date of Completion", datetime.date.today())
-        g_time = st.time_input("Time of Completion", datetime.time(10, 0))
-        g_incharge = st.text_input("Site In-Charge", value="")
-        g_hod = st.text_input("HOD Name", value="")
-
-    st.markdown("---")
-    st.markdown("### 📝 General Work Details (6 Lines / Dotted Lines)")
-    line1 = st.text_input("Line 1", value=".........................................................................................................................")
-    line2 = st.text_input("Line 2", value=".........................................................................................................................")
-    line3 = st.text_input("Line 3", value=".........................................................................................................................")
-    line4 = st.text_input("Line 4", value=".........................................................................................................................")
-    line5 = st.text_input("Line 5", value=".........................................................................................................................")
-    line6 = st.text_input("Line 6", value=".........................................................................................................................")
-
-    def create_normal_wcc():
-        doc = Document()
-        title = doc.add_heading('WORK COMPLETION CERTIFICATE', level=1)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        t = doc.add_table(rows=4, cols=2)
-        t.style = 'Table Grid'
-        t.cell(0, 0).text = f"Job Order Number: {g_job}"
-        t.cell(0, 1).text = f"Date & Time: {g_date} {g_time}"
-        t.cell(1, 0).text = f"Client: {g_client}"
-        t.cell(1, 1).text = f"Tel No: {g_tel}"
-        t.cell(2, 0).text = f"Project: {g_project}"
-        t.cell(2, 1).text = f"Location: {g_loc}"
-        t.cell(3, 0).text = f"Site In-Charge: {g_incharge}"
-        t.cell(3, 1).text = f"HOD Name: {g_hod}"
-
-        doc.add_paragraph("\nDetails of Work:")
-        doc.add_paragraph(f"1. {line1}\n2. {line2}\n3. {line3}\n4. {line4}\n5. {line5}\n6. {line6}")
-        
-        doc.add_paragraph("\nClient Signature: ______________________    Date: ____/____/______")
-        
-        footer = doc.add_paragraph("\nP.O Box 2286, Abu Dhabi – United Arab Emirates - Tel: +971-2-6436663 | E-mail: eifm@eifm.ae")
-        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        bio = BytesIO()
-        doc.save(bio)
-        return bio.getvalue()
-
-    st.markdown("---")
-    normal_file = create_normal_wcc()
-    st.download_button(
-        label="📥 Download Normal WCC (.docx)",
-        data=normal_file,
-        file_name=f"WCC_{g_project}_{g_date}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
-        
