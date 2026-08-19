@@ -1,0 +1,5 @@
+def create_ppm_equipment_task_sheet(equipment_list=None):
+  # यह वही नया कोड है जो ऊपर दिया गया है
+  # equipment_list पास करने पर यह सारे ऐड किए गए आइटम्स एक्सेल में डाल देगा
+  ...
+  
