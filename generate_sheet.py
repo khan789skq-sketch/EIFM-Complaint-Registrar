@@ -2,17 +2,28 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 
-def create_ppm_equipment_task_sheet(equipment_list=None, meta=None):
+def create_ppm_equipment_task_sheet(
+    equipment_list=None,
+    meta=None,
+    building=None,
+    location=None,
+    unit_no=None,
+    category=None,
+    eq_type=None,
+    ppm_type=None,
+    wo_number=None,
+    month=None,
+):
   if meta is None:
     meta = {
-        "building": "",
-        "location": "",
-        "unit_no": "",
-        "category": "HVAC",
-        "eq_type": "FCU",
-        "ppm_type": "PPM 1 (Monthly)",
-        "wo_number": "",
-        "month": "",
+        "building": building or "",
+        "location": location or "",
+        "unit_no": unit_no or "",
+        "category": category or "HVAC",
+        "eq_type": eq_type or "FCU",
+        "ppm_type": ppm_type or "PPM 1 (Monthly)",
+        "wo_number": wo_number or "",
+        "month": month or "",
     }
 
   wb = openpyxl.Workbook()
@@ -67,8 +78,18 @@ def create_ppm_equipment_task_sheet(equipment_list=None, meta=None):
   # Metadata Table
   meta_structure = [
       ("Building / Project:", meta.get("building", ""), "Fiscal Year:", "2026"),
-      ("Location / Zone:", meta.get("location", ""), "WO / WCC No:", meta.get("wo_number", "")),
-      ("Unit Number:", meta.get("unit_no", ""), "Scheduled Month:", meta.get("month", "")),
+      (
+          "Location / Zone:",
+          meta.get("location", ""),
+          "WO / WCC No:",
+          meta.get("wo_number", ""),
+      ),
+      (
+          "Unit Number:",
+          meta.get("unit_no", ""),
+          "Scheduled Month:",
+          meta.get("month", ""),
+      ),
       ("Frequency Type:", meta.get("ppm_type", ""), "Date of Service:", ""),
       ("Category:", meta.get("category", ""), "Time Start:", ""),
       ("Equipment Type:", meta.get("eq_type", ""), "Time Finish:", ""),
@@ -211,4 +232,4 @@ def create_ppm_equipment_task_sheet(equipment_list=None, meta=None):
 
 def create_preventive_maintenance_sheet():
   create_ppm_equipment_task_sheet()
-    
+  
