@@ -53,22 +53,24 @@ st.markdown("""
 doc_mode = st.radio("**Select Document Type:**", ["PPM Document (WCC Front Page + Equipment Checklist Below)", "Normal Work Completion Certificate (General WCC)"], horizontal=True)
 
 # ---------------------------------------------------------
-# OPTION A: PPM DOCUMENT (WCC FRONT + EXCEL CHECKLIST BELOW)
+# OPTION A: PPM DOCUMENT (WCC FRONT + EXACT EXCEL TASK SHEET BELOW)
 # ---------------------------------------------------------
 if "PPM Document" in doc_mode:
     st.subheader("📋 PPM Integrated Report Generator")
     
     col1, col2 = st.columns(2)
     with col1:
-        job_order = st.text_input("Job Order Number", value="3rd PPM Service Year 2026")
+        job_order = st.text_input("Job Order Number / WO No.", value="WO-2026-001")
         client_name = st.text_input("Client Name", value="Asteco Property Management")
         project_name = st.selectbox("Select Building / Project", SITES_LIST)
         location = st.text_input("Location / Area", value="Main Building / Plant Room")
+        unit_no = st.text_input("Unit Number", value="Common Area")
         tel_no = st.text_input("Tel No.", value="")
 
     with col2:
-        comp_date = st.date_input("Date of Completion", datetime.date.today())
-        comp_time = st.time_input("Time of Completion", datetime.time(10, 0))
+        comp_date = st.date_input("Date of Service", datetime.date.today())
+        frequency = st.selectbox("Frequency", ["Monthly", "Quarterly", "Semi-Annual", "Annual"], index=1)
+        category_type = st.selectbox("Category", ["HVAC", "Electrical", "Plumbing", "Civil", "Specialist"], index=0)
         selected_equipments = st.multiselect("Select Equipments for Checklist", EQUIPMENT_LIST, default=['FCU', 'Split'])
         site_incharge = st.text_input("Site In-Charge", value="")
         hod_name = st.text_input("HOD Name", value="")
@@ -78,7 +80,7 @@ if "PPM Document" in doc_mode:
     work_details = st.text_area("Details of Work", value="Planned Preventive Maintenance Service Completed as per attached Check List.")
     remarks = st.text_area("Remarks / Suggestions (Blank Lines for Print)", value=".......................................................................................................\n.......................................................................................................")
 
-    # Word Generator (Front: WCC, Next: Equipment Checklists)
+    # Word Generator (Front: WCC, Next: Exact PPM Task Sheets)
     def create_ppm_combined_doc():
         doc = Document()
         
@@ -89,7 +91,7 @@ if "PPM Document" in doc_mode:
         t_wcc = doc.add_table(rows=5, cols=2)
         t_wcc.style = 'Table Grid'
         t_wcc.cell(0, 0).text = f"Job Order Number: {job_order}"
-        t_wcc.cell(0, 1).text = f"Date & Time: {comp_date} {comp_time}"
+        t_wcc.cell(0, 1).text = f"Date: {comp_date}"
         t_wcc.cell(1, 0).text = f"Client: {client_name}"
         t_wcc.cell(1, 1).text = f"Tel No: {tel_no}"
         t_wcc.cell(2, 0).text = f"Project: {project_name}"
@@ -100,35 +102,109 @@ if "PPM Document" in doc_mode:
 
         doc.add_paragraph("\nClient Signature: ______________________    Date: ____/____/______")
         
-        # Footer
         footer = doc.add_paragraph("\nP.O Box 2286, Abu Dhabi – United Arab Emirates - Tel: +971-2-6436663 | E-mail: eifm@eifm.ae")
         footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # --- PAGE 2 ONWARDS: EQUIPMENT CHECKLISTS BELOW ---
+        # --- PAGE 2 ONWARDS: EXACT PREVENTIVE MAINTENANCE TASK SHEET ---
         for eq in selected_equipments:
             doc.add_page_break()
-            doc.add_heading(f'PPM CHECKLIST - {eq.upper()}', level=2)
             
-            # Equipment Table Structure
-            t_eq = doc.add_table(rows=1, cols=3)
-            t_eq.style = 'Table Grid'
-            hdr = t_eq.rows[0].cells
-            hdr[0].text = 'Sl. No.'
-            hdr[1].text = 'Maintenance Task / Activity'
-            hdr[2].text = 'Status (OK / Not OK / NA)'
+            # Header Title
+            h = doc.add_heading('Preventive Maintenance Task Sheet', level=1)
+            h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Top Metadata Table (Exact match to Excel Layout)
+            t_meta = doc.add_table(rows=6, cols=4)
+            t_meta.style = 'Table Grid'
+            
+            t_meta.cell(0, 0).text = "Project Name"
+            t_meta.cell(0, 1).text = str(project_name)
+            t_meta.cell(0, 2).text = "Fiscal Year"
+            t_meta.cell(0, 3).text = str(comp_date.year)
+            
+            t_meta.cell(1, 0).text = "Location"
+            t_meta.cell(1, 1).text = str(location)
+            t_meta.cell(1, 2).text = "WO Number"
+            t_meta.cell(1, 3).text = str(job_order)
+            
+            t_meta.cell(2, 0).text = "Unit Number"
+            t_meta.cell(2, 1).text = str(unit_no)
+            t_meta.cell(2, 2).text = "Scheduled Month"
+            t_meta.cell(2, 3).text = comp_date.strftime("%B")
+            
+            t_meta.cell(3, 0).text = "Frequency"
+            t_meta.cell(3, 1).text = str(frequency)
+            t_meta.cell(3, 2).text = "Date of Service"
+            t_meta.cell(3, 3).text = str(comp_date)
+            
+            t_meta.cell(4, 0).text = "Category"
+            t_meta.cell(4, 1).text = str(category_type)
+            t_meta.cell(4, 2).text = "Time Start"
+            t_meta.cell(4, 3).text = "________"
+            
+            t_meta.cell(5, 0).text = "Equipment Type"
+            t_meta.cell(5, 1).text = str(eq)
+            t_meta.cell(5, 2).text = "Time Finish"
+            t_meta.cell(5, 3).text = "________"
 
-            # Fetch tasks from All-3.xlsx if available
+            doc.add_paragraph("") # Space
+
+            # Checklist Task Table
+            t_task = doc.add_table(rows=1, cols=6)
+            t_task.style = 'Table Grid'
+            hdr = t_task.rows[0].cells
+            hdr[0].text = 'Sl. No.'
+            hdr[1].text = 'Service Specification Task'
+            hdr[2].text = 'OK'
+            hdr[3].text = 'Not OK'
+            hdr[4].text = 'Remarks'
+            hdr[5].text = 'Follow up W.O. if needed'
+
+            # Fetch tasks from All-3.xlsx or use default standard tasks
+            tasks = []
             try:
                 df = pd.read_excel('All-3.xlsx', sheet_name=eq)
-                tasks = df.iloc[8:18, 1].dropna().tolist()
+                tasks = df.iloc[8:19, 1].dropna().tolist()
             except:
-                tasks = ["Inspect and clean component", "Check electrical terminal wiring", "Check motor noise & vibration", "Check temperature and pressure"]
+                pass
+            
+            if not tasks:
+                tasks = [
+                    "Condition of Blower and Cooling Coil",
+                    "Check condition of Motor for abnormal noise / vibration",
+                    "Check and clean evaporator drain pan",
+                    "Check electrical wiring connection, tight if required",
+                    "Check the function of actuator, proper closing and opening",
+                    "Clean drain with compressed air or nitrogen",
+                    "Check for Joint / Pipe Leak or insulation leaks",
+                    "Check and service Air Filter",
+                    "Servicing of complete system",
+                    "Check thermostat and valve operation status"
+                ]
 
             for idx, task in enumerate(tasks, 1):
-                row = t_eq.add_row().cells
+                row = t_task.add_row().cells
                 row[0].text = str(idx)
                 row[1].text = str(task)
-                row[2].text = "[  ] OK   [  ] Not OK"
+                row[2].text = "[  ]"
+                row[3].text = "[  ]"
+                row[4].text = ""
+                row[5].text = ""
+
+            # General Notice Box
+            doc.add_paragraph("")
+            notice_p = doc.add_paragraph()
+            r = notice_p.add_run("GENERAL NOTICE: Appropriate PPE is to be worn at all times ensuring works are carried out in pairs where access is limited and/or at height. All works will be scheduled in advance and the occupier/tenant must be informed prior to the service.")
+            r.font.size = Pt(8)
+            r.font.italic = True
+            r.font.color.rgb = RGBColor(200, 0, 0)
+
+            # Signatures Table
+            t_sign = doc.add_table(rows=2, cols=2)
+            t_sign.style = 'Table Grid'
+            t_sign.cell(0, 0).text = "Tech. Date/Sign:"
+            t_sign.cell(0, 1).text = "Eng./Sup Date Sign:"
+            t_sign.cell(1, 0).merge(t_sign.cell(1, 1)).text = "REPORT SUMMARY OF MAINTENANCE:\n\n\n\n"
 
         bio = BytesIO()
         doc.save(bio)
