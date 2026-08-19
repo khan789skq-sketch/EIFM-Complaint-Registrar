@@ -3,6 +3,8 @@ import pandas as pd
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from io import BytesIO
 import datetime
 
@@ -39,6 +41,51 @@ EQUIPMENT_LIST = [
     'Chilled water pump', 'Filter pump', 'Chiller', 'Generator', 'SMA', 'Sliding'
 ]
 
+# Standard tasks mapped for all equipment types if excel sheet isn't loaded
+DEFAULT_EQUIPMENT_TASKS = {
+    'FCU': [
+        "Condition of Blower and Cooling Coil",
+        "Check condition of Motor for abnormal noise/vibration",
+        "Check and clean evaporator drain pan",
+        "Check electrical wiring connection, tight if required",
+        "Check the function of actuator, proper closing and opening",
+        "Clean drain with compressed air or nitrogen",
+        "Check for Joint/Pipe Leak or insulation leaks",
+        "Check and service Air Filter",
+        "Servicing of complete system",
+        "Check thermostat and valve operation status"
+    ],
+    'Split': [
+        "Clean indoor unit air filters and evaporator coil",
+        "Check outdoor unit condenser coil and clean",
+        "Check refrigerant pressure and gas leaks",
+        "Inspect electrical terminals and connections",
+        "Check compressor operating current/amperage",
+        "Clean condensate drain line and tray"
+    ],
+    'FAHU': [
+        "Inspect supply/exhaust fan motors and belts",
+        "Check heat recovery wheel / heat exchanger condition",
+        "Inspect pre-filters, bag filters and replace if needed",
+        "Check chilled water valves and actuators",
+        "Inspect electrical control panel and VFD operation"
+    ]
+}
+
+# Generic fallback tasks for remaining equipments
+GENERIC_TASKS = [
+    "Visual inspection of equipment condition and mounting",
+    "Check all electrical connections and terminal tightness",
+    "Clean equipment body, filters, and surroundings",
+    "Check for abnormal noise, vibration, or overheating",
+    "Inspect valves, pipe joints, and pressure gauges",
+    "Verify operational sequence and control settings",
+    "Test safety trips and emergency shutdown controls",
+    "Record voltage, current, and operating pressure",
+    "Apply lubrication to bearings/moving parts where required",
+    "Final functional testing and system sign-off"
+]
+
 # Header Title
 st.markdown("""
     <div class="header-box">
@@ -50,17 +97,17 @@ st.markdown("""
 # ---------------------------------------------------------
 # 3. MODE SELECTION
 # ---------------------------------------------------------
-doc_mode = st.radio("**Select Document Type:**", ["PPM Document (WCC Front Page + Equipment Checklist Below)", "Normal Work Completion Certificate (General WCC)"], horizontal=True)
+doc_mode = st.radio("**Select Document Type:**", ["PPM Document (WCC Front Page + Exact Task Sheet Below)", "Normal Work Completion Certificate (General WCC)"], horizontal=True)
 
 # ---------------------------------------------------------
-# OPTION A: PPM DOCUMENT (WCC FRONT + EXACT EXCEL TASK SHEET BELOW)
+# OPTION A: PPM DOCUMENT WITH EXACT TASK SHEET MATCHING IMAGE
 # ---------------------------------------------------------
 if "PPM Document" in doc_mode:
     st.subheader("📋 PPM Integrated Report Generator")
     
     col1, col2 = st.columns(2)
     with col1:
-        job_order = st.text_input("Job Order Number / WO No.", value="WO-2026-001")
+        job_order = st.text_input("Job Order / WO Number", value="WO-2026-001")
         client_name = st.text_input("Client Name", value="Asteco Property Management")
         project_name = st.selectbox("Select Building / Project", SITES_LIST)
         location = st.text_input("Location / Area", value="Main Building / Plant Room")
@@ -80,7 +127,6 @@ if "PPM Document" in doc_mode:
     work_details = st.text_area("Details of Work", value="Planned Preventive Maintenance Service Completed as per attached Check List.")
     remarks = st.text_area("Remarks / Suggestions (Blank Lines for Print)", value=".......................................................................................................\n.......................................................................................................")
 
-    # Word Generator (Front: WCC, Next: Exact PPM Task Sheets)
     def create_ppm_combined_doc():
         doc = Document()
         
@@ -105,15 +151,15 @@ if "PPM Document" in doc_mode:
         footer = doc.add_paragraph("\nP.O Box 2286, Abu Dhabi – United Arab Emirates - Tel: +971-2-6436663 | E-mail: eifm@eifm.ae")
         footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # --- PAGE 2 ONWARDS: EXACT PREVENTIVE MAINTENANCE TASK SHEET ---
+        # --- PAGE 2 ONWARDS: EXACT PREVENTIVE MAINTENANCE TASK SHEET FOR EACH SELECTED EQUIPMENT ---
         for eq in selected_equipments:
             doc.add_page_break()
             
-            # Header Title
+            # Title
             h = doc.add_heading('Preventive Maintenance Task Sheet', level=1)
             h.alignment = WD_ALIGN_PARAGRAPH.CENTER
             
-            # Top Metadata Table (Exact match to Excel Layout)
+            # 1. Metadata Box (Same structure as Excel image)
             t_meta = doc.add_table(rows=6, cols=4)
             t_meta.style = 'Table Grid'
             
@@ -149,7 +195,7 @@ if "PPM Document" in doc_mode:
 
             doc.add_paragraph("") # Space
 
-            # Checklist Task Table
+            # 2. Main Tasks Table (Columns: Sl. No | Service Specification Task | OK | Not OK | Remarks | Follow up W.O.)
             t_task = doc.add_table(rows=1, cols=6)
             t_task.style = 'Table Grid'
             hdr = t_task.rows[0].cells
@@ -160,7 +206,7 @@ if "PPM Document" in doc_mode:
             hdr[4].text = 'Remarks'
             hdr[5].text = 'Follow up W.O. if needed'
 
-            # Fetch tasks from All-3.xlsx or use default standard tasks
+            # Try Excel sheet first, fallback to mapped/generic tasks
             tasks = []
             try:
                 df = pd.read_excel('All-3.xlsx', sheet_name=eq)
@@ -169,18 +215,7 @@ if "PPM Document" in doc_mode:
                 pass
             
             if not tasks:
-                tasks = [
-                    "Condition of Blower and Cooling Coil",
-                    "Check condition of Motor for abnormal noise / vibration",
-                    "Check and clean evaporator drain pan",
-                    "Check electrical wiring connection, tight if required",
-                    "Check the function of actuator, proper closing and opening",
-                    "Clean drain with compressed air or nitrogen",
-                    "Check for Joint / Pipe Leak or insulation leaks",
-                    "Check and service Air Filter",
-                    "Servicing of complete system",
-                    "Check thermostat and valve operation status"
-                ]
+                tasks = DEFAULT_EQUIPMENT_TASKS.get(eq, GENERIC_TASKS)
 
             for idx, task in enumerate(tasks, 1):
                 row = t_task.add_row().cells
@@ -191,7 +226,7 @@ if "PPM Document" in doc_mode:
                 row[4].text = ""
                 row[5].text = ""
 
-            # General Notice Box
+            # 3. General Notice
             doc.add_paragraph("")
             notice_p = doc.add_paragraph()
             r = notice_p.add_run("GENERAL NOTICE: Appropriate PPE is to be worn at all times ensuring works are carried out in pairs where access is limited and/or at height. All works will be scheduled in advance and the occupier/tenant must be informed prior to the service.")
@@ -199,7 +234,7 @@ if "PPM Document" in doc_mode:
             r.font.italic = True
             r.font.color.rgb = RGBColor(200, 0, 0)
 
-            # Signatures Table
+            # 4. Signatures & Report Summary Box (Matching Image Bottom)
             t_sign = doc.add_table(rows=2, cols=2)
             t_sign.style = 'Table Grid'
             t_sign.cell(0, 0).text = "Tech. Date/Sign:"
@@ -283,5 +318,5 @@ else:
         data=normal_file,
         file_name=f"WCC_{g_project}_{g_date}.docx",
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-    
+            )
+        
