@@ -2,19 +2,28 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 
-def create_ppm_equipment_task_sheet(equipment_list=None):
-  """Dynamic Equipment/Task List के साथ Excel Sheet बनाएगा"""
+def create_ppm_equipment_task_sheet(equipment_list=None, meta=None):
+  if meta is None:
+    meta = {
+        "building": "",
+        "location": "",
+        "unit_no": "",
+        "category": "HVAC",
+        "eq_type": "FCU",
+        "ppm_type": "PPM 1 (Monthly)",
+        "wo_number": "",
+        "month": "",
+    }
+
   wb = openpyxl.Workbook()
   ws = wb.active
-  ws.title = "PPM Task Sheet"
+  ws.title = "PPM & WCC Task Sheet"
   ws.views.sheetView[0].showGridLines = True
 
-  # Dynamic Column Widths
   col_widths = {"A": 8, "B": 45, "C": 10, "D": 10, "E": 25, "F": 22}
   for col, width in col_widths.items():
     ws.column_dimensions[col].width = width
 
-  # Borders & Fills
   thin = Side(border_style="thin", color="000000")
   border_all_thin = Border(left=thin, right=thin, top=thin, bottom=thin)
 
@@ -28,7 +37,6 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
       start_color="F2DCDB", end_color="F2DCDB", fill_type="solid"
   )
 
-  # Fonts
   font_main_header = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
   font_sub_header = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
   font_bold = Font(name="Calibri", size=10, bold=True, color="000000")
@@ -37,13 +45,12 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
       name="Calibri", size=9, bold=True, italic=True, color="C00000"
   )
 
-  # Alignments
   align_center = Alignment(
       horizontal="center", vertical="center", wrap_text=True
   )
   align_left = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-  # Row 1: Company Name
+  # Title Header
   ws.merge_cells("A1:F1")
   ws["A1"] = "EMIRATES INTERNATIONAL FACILITIES MANAGEMENT"
   ws["A1"].font = font_main_header
@@ -51,21 +58,20 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
   ws["A1"].alignment = align_center
   ws.row_dimensions[1].height = 28
 
-  # Row 2: Subtitle
   ws.merge_cells("A2:F2")
-  ws["A2"] = "PREVENTIVE MAINTENANCE TASK SHEET"
+  ws["A2"] = f"PREVENTIVE MAINTENANCE TASK SHEET ({meta.get('ppm_type', 'PPM')})"
   ws["A2"].font = Font(name="Calibri", size=12, bold=True, color="1F497D")
   ws["A2"].alignment = align_center
   ws.row_dimensions[2].height = 22
 
-  # Metadata Section (Rows 3-8)
+  # Metadata Table
   meta_structure = [
-      ("Project Name:", "", "Fiscal Year:", "2026"),
-      ("Location:", "", "WO Number:", ""),
-      ("Unit Number:", "", "Scheduled Month:", ""),
-      ("Frequency:", "", "Date of Service:", ""),
-      ("Category:", "", "Time Start:", ""),
-      ("Equipment Type:", "", "Time Finish:", ""),
+      ("Building / Project:", meta.get("building", ""), "Fiscal Year:", "2026"),
+      ("Location / Zone:", meta.get("location", ""), "WO / WCC No:", meta.get("wo_number", "")),
+      ("Unit Number:", meta.get("unit_no", ""), "Scheduled Month:", meta.get("month", "")),
+      ("Frequency Type:", meta.get("ppm_type", ""), "Date of Service:", ""),
+      ("Category:", meta.get("category", ""), "Time Start:", ""),
+      ("Equipment Type:", meta.get("eq_type", ""), "Time Finish:", ""),
   ]
 
   for r_idx, row_data in enumerate(meta_structure, start=3):
@@ -87,14 +93,14 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
     for col in range(1, 7):
       ws.cell(row=r_idx, column=col).border = border_all_thin
 
-  # Row 9: Table Headers
+  # Column Headers
   headers = [
       "Sl. No.",
       "Service Specification Task / Equipment Check",
       "OK",
       "Not OK",
       "Remarks",
-      "Follow up WO if needed",
+      "Follow up WO / WCC Needed",
   ]
   ws.row_dimensions[9].height = 26
   for c_idx, h_text in enumerate(headers, start=1):
@@ -104,8 +110,8 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
     cell.alignment = align_center
     cell.border = border_all_thin
 
-  # Dynamic Checklist Items
-  items = equipment_list if equipment_list else [""] * 15
+  # Task List Population
+  items = equipment_list if equipment_list else [""] * 12
   current_row = 10
 
   for idx, task_name in enumerate(items, start=1):
@@ -120,7 +126,7 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
       ws.cell(row=current_row, column=col).border = border_all_thin
     current_row += 1
 
-  # Notice Row
+  # Notice
   ws.merge_cells(
       start_row=current_row,
       start_column=1,
@@ -132,6 +138,8 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
   notice_cell.value = (
       "GENERAL NOTICE: Appropriate PPE is to be worn at all times ensuring"
       " works are carried out in pairs where access is limited and/or at height."
+      " All works will be scheduled in advance and the occupier/tenant must be"
+      " informed prior to the service."
   )
   notice_cell.font = font_notice
   notice_cell.alignment = align_center
@@ -141,7 +149,7 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
 
   current_row += 1
 
-  # Signature Row
+  # Signatures
   ws.row_dimensions[current_row].height = 24
   ws.merge_cells(
       start_row=current_row,
@@ -168,7 +176,7 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
 
   current_row += 1
 
-  # Maintenance Summary Section
+  # Report Summary Box
   ws.row_dimensions[current_row].height = 20
   ws.merge_cells(
       start_row=current_row,
@@ -177,7 +185,9 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
       end_column=6,
   )
   sum_cell = ws.cell(
-      row=current_row, column=1, value="REPORT SUMMARY OF MAINTENANCE:"
+      row=current_row,
+      column=1,
+      value="REPORT SUMMARY OF MAINTENANCE / WCC COMPLAINT:",
   )
   sum_cell.font = font_bold
   sum_cell.fill = fill_sub_header
@@ -200,11 +210,5 @@ def create_ppm_equipment_task_sheet(equipment_list=None):
 
 
 def create_preventive_maintenance_sheet():
-  """Default Single Function Call"""
   create_ppm_equipment_task_sheet()
-
-
-if __name__ == "__main__":
-  create_ppm_equipment_task_sheet()
-
-  
+    
