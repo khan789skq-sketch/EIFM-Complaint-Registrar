@@ -2,29 +2,12 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 
-def create_ppm_equipment_task_sheet(
-    equipment_list=None,
-    meta=None,
-    building=None,
-    location=None,
-    unit_no=None,
-    category=None,
-    eq_type=None,
-    ppm_type=None,
-    wo_number=None,
-    month=None,
-):
-  if meta is None:
-    meta = {
-        "building": building or "",
-        "location": location or "",
-        "unit_no": unit_no or "",
-        "category": category or "HVAC",
-        "eq_type": eq_type or "FCU",
-        "ppm_type": ppm_type or "PPM 1 (Monthly)",
-        "wo_number": wo_number or "",
-        "month": month or "",
-    }
+def create_ppm_equipment_task_sheet(*args, **kwargs):
+  equipment_list = args[0] if len(args) > 0 else kwargs.get("equipment_list", [])
+  meta = args[1] if len(args) > 1 else kwargs.get("meta", {})
+
+  if not isinstance(meta, dict):
+    meta = {}
 
   wb = openpyxl.Workbook()
   ws = wb.active
@@ -63,21 +46,38 @@ def create_ppm_equipment_task_sheet(
 
   # Title Header
   ws.merge_cells("A1:F1")
-  ws["A1"] = "EMIRATES INTERNATIONAL FACILITIES MANAGEMENT"
+  ws["A1"] = (
+      meta.get("site_title", "EMIRATES INTERNATIONAL FACILITIES MANAGEMENT")
+      .strip()
+      .upper()
+  )
   ws["A1"].font = font_main_header
   ws["A1"].fill = fill_dark_header
   ws["A1"].alignment = align_center
   ws.row_dimensions[1].height = 28
 
+  # Sub Title
   ws.merge_cells("A2:F2")
-  ws["A2"] = f"PREVENTIVE MAINTENANCE TASK SHEET ({meta.get('ppm_type', 'PPM')})"
+  sheet_mode = meta.get("doc_type", "PPM TASK SHEET")
+  ppm_freq = meta.get("ppm_type", "")
+  sub_title_text = (
+      f"WORK COMPLETION CERTIFICATE (WCC) & {sheet_mode}"
+      if "WCC" in sheet_mode
+      else f"PREVENTIVE MAINTENANCE TASK SHEET ({ppm_freq})"
+  )
+  ws["A2"] = sub_title_text
   ws["A2"].font = Font(name="Calibri", size=12, bold=True, color="1F497D")
   ws["A2"].alignment = align_center
   ws.row_dimensions[2].height = 22
 
-  # Metadata Table
+  # Metadata
   meta_structure = [
-      ("Building / Project:", meta.get("building", ""), "Fiscal Year:", "2026"),
+      (
+          "Site / Building Name:",
+          meta.get("building", ""),
+          "Fiscal Year:",
+          "2026",
+      ),
       (
           "Location / Zone:",
           meta.get("location", ""),
@@ -85,14 +85,19 @@ def create_ppm_equipment_task_sheet(
           meta.get("wo_number", ""),
       ),
       (
-          "Unit Number:",
+          "Unit / Flat No:",
           meta.get("unit_no", ""),
           "Scheduled Month:",
           meta.get("month", ""),
       ),
-      ("Frequency Type:", meta.get("ppm_type", ""), "Date of Service:", ""),
-      ("Category:", meta.get("category", ""), "Time Start:", ""),
-      ("Equipment Type:", meta.get("eq_type", ""), "Time Finish:", ""),
+      (
+          "Service / PPM Type:",
+          meta.get("ppm_type", ""),
+          "Date of Service:",
+          meta.get("service_date", ""),
+      ),
+      ("Category / System:", meta.get("category", ""), "Time Start:", ""),
+      ("Equipment Model / Type:", meta.get("eq_type", ""), "Time Finish:", ""),
   ]
 
   for r_idx, row_data in enumerate(meta_structure, start=3):
@@ -114,7 +119,7 @@ def create_ppm_equipment_task_sheet(
     for col in range(1, 7):
       ws.cell(row=r_idx, column=col).border = border_all_thin
 
-  # Column Headers
+  # Headers Row
   headers = [
       "Sl. No.",
       "Service Specification Task / Equipment Check",
@@ -131,7 +136,7 @@ def create_ppm_equipment_task_sheet(
     cell.alignment = align_center
     cell.border = border_all_thin
 
-  # Task List Population
+  # Tasks
   items = equipment_list if equipment_list else [""] * 12
   current_row = 10
 
@@ -197,7 +202,7 @@ def create_ppm_equipment_task_sheet(
 
   current_row += 1
 
-  # Report Summary Box
+  # Report / WCC Summary
   ws.row_dimensions[current_row].height = 20
   ws.merge_cells(
       start_row=current_row,
@@ -208,7 +213,7 @@ def create_ppm_equipment_task_sheet(
   sum_cell = ws.cell(
       row=current_row,
       column=1,
-      value="REPORT SUMMARY OF MAINTENANCE / WCC COMPLAINT:",
+      value="REPORT SUMMARY OF MAINTENANCE / WCC COMPLAINT WORK:",
   )
   sum_cell.font = font_bold
   sum_cell.fill = fill_sub_header
@@ -232,4 +237,4 @@ def create_ppm_equipment_task_sheet(
 
 def create_preventive_maintenance_sheet():
   create_ppm_equipment_task_sheet()
-  
+    
