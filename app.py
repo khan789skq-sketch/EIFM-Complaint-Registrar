@@ -3,67 +3,83 @@ import generate_sheet
 import streamlit as st
 
 st.set_page_config(
-    page_title="EIFM Maintenance & WCC Generator", page_icon="🏢", layout="wide"
+    page_title="EIFM PPM & WCC Task Sheet Generator",
+    page_icon="📋",
+    layout="wide",
 )
 
-st.title("🏢 EIFM Maintenance & WCC Task Sheet Generator")
+st.title("📋 EIFM PPM & WCC Generator")
 
-# Sidebar Configurations
-st.sidebar.header("⚙️ Sheet & Site Setup")
+st.markdown("---")
 
-site_title = st.sidebar.text_input(
-    "Company / Header Name", "EMIRATES INTERNATIONAL FACILITIES MANAGEMENT"
-)
+# 1. Main Document & Site Settings (No Collapsed Sidebar)
+st.subheader("🏢 Site & Client Details")
+col1, col2 = st.columns(2)
 
-doc_type = st.sidebar.radio(
-    "Select Sheet Type",
-    ["PPM Task Sheet", "WCC / Complaint Sheet"],
-)
+with col1:
+  site_title = st.text_input(
+      "Company Name / Header", "EMIRATES INTERNATIONAL FACILITIES MANAGEMENT"
+  )
+  client_name = st.text_input("Client / Customer Name", "Client Name Ltd")
+  building_name = st.text_input("Site / Building Name", "Sharjah Project")
+  unit_no = st.text_input("Unit / Area No.", "Unit 101")
 
-st.sidebar.subheader("🏢 Site & Unit Details")
-building_name = st.sidebar.text_input("Building / Site Name", "Sharjah Tower A")
-location = st.sidebar.text_input("Location / Zone", "Mechanical Room - B1")
-unit_no = st.sidebar.text_input("Unit / Apartment No.", "Unit 402")
+with col2:
+  doc_type = st.radio(
+      "Select Sheet Type",
+      ["PPM Task Sheet", "WCC / Complaint Sheet"],
+      horizontal=True,
+  )
+  location = st.text_input("Location / Zone", "Plant Room - B1")
+  category = st.selectbox(
+      "Category",
+      ["HVAC / AC System", "Electrical", "Plumbing", "Fire Fighting"],
+  )
+  eq_type = st.text_input("Equipment Type / Tag", "FCU (Fan Coil Unit)")
 
-st.sidebar.subheader("🛠️ System & Equipment")
-category = st.sidebar.selectbox(
-    "Category", ["HVAC / AC System", "Electrical", "Plumbing", "Fire Fighting"]
-)
-eq_type = st.sidebar.text_input("Equipment Type / Tag", "FCU-01 (Fan Coil Unit)")
+st.markdown("---")
 
-st.sidebar.subheader("📋 Service & Work Order Details")
-ppm_type = st.sidebar.selectbox(
-    "PPM Frequency",
-    [
-        "PPM 1 (Monthly)",
-        "PPM 2 (Quarterly)",
-        "PPM 3 (Semi-Annual)",
-        "PPM 4 (Annual)",
-        "Ad-hoc / Corrective",
-    ],
-)
-wo_number = st.sidebar.text_input("WO / WCC Number", "WO-2026-8801")
-scheduled_month = st.sidebar.selectbox(
-    "Scheduled Month",
-    [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ],
-)
-service_date = st.sidebar.text_input("Date of Service", "19/08/2026")
+# 2. Service & WO Details
+st.subheader("📑 Service & Work Order Details")
+col3, col4 = st.columns(2)
 
-# Tasks Input Section
-st.subheader("📝 Customize Checklist Items / Maintenance Tasks")
+with col3:
+  ppm_type = st.selectbox(
+      "PPM Frequency",
+      [
+          "PPM 1 (Monthly)",
+          "PPM 2 (Quarterly)",
+          "PPM 3 (Semi-Annual)",
+          "PPM 4 (Annual)",
+          "Corrective / Complaint",
+      ],
+  )
+  wo_number = st.text_input("WO / WCC Number", "WO-2026-001")
+
+with col4:
+  scheduled_month = st.selectbox(
+      "Scheduled Month",
+      [
+          "January",
+          "February",
+          "March",
+          "April",
+          "May",
+          "June",
+          "July",
+          "August",
+          "September",
+          "October",
+          "November",
+          "December",
+      ],
+  )
+  service_date = st.text_input("Date of Service", "19/08/2026")
+
+st.markdown("---")
+
+# 3. Tasks Input Section
+st.subheader("📝 Maintenance Checklist Items")
 default_tasks = (
     "Check FCU Filters and Clean\n"
     "Inspect Thermostat and Blower Fan\n"
@@ -80,6 +96,7 @@ task_list = [t.strip() for t in tasks_input.split("\n") if t.strip()]
 # Metadata Payload
 meta_payload = {
     "site_title": site_title,
+    "client_name": client_name,
     "doc_type": doc_type,
     "building": building_name,
     "location": location,
@@ -116,4 +133,4 @@ try:
       )
 except Exception as err:
   st.error(f"Error generating file: {err}")
-  
+    
