@@ -1,16 +1,107 @@
-export const buildings=[
-"11Villa","Anantara","Westburry Residence","Champion Tower","Frankfurt Tower","Jewel Tower","Liv Resistance","Red Resistance","JBR Staff Accommodation","Al Ghilani","Al Nahda1","Al Nahda2","Al Qasimiya","Al Safiya","Alpha Building","Al Makhool Building",
-"Marina6 - Flat 1101, 1108, 1111, 1403, & 1405","Marina Penthouse 1403","Marina3 - Flat Lg 06, Lg 07, G 07","Al Ghadeer Village","Das Holding",
-"Marina Gate1 - Flat 1705, 3205, 3206, 3404, 3506, 3605, 3905, 3906, 4105, 4106, 4305, 4405, 4406, 4705, 4706, 4202",
-"Marina Gate1 & 2 - 3606, 4405, 4406, 1305, 2405, 2905",
-"Marina Gate2 - 0905, 1906, 2306, 2406, 2706, 2906, 3206, 3406, 3606, 3806, 4006, 4106, 4306, 4906, 5806",
-"Al Thaniya Villa","Mr Khalid Abdulla Khaleefa Deemas","Abdulla Deemas","Square 334","Al Barsha","Al Findi","P9 Office","Al Mamzar","EWP Labour Camp"
+// ============================================================
+// EIFM WCC & PPM
+// Application data / dropdown lists
+// ============================================================
+
+// ------------------------------------------------------------
+// BUILDINGS
+// ------------------------------------------------------------
+// IMPORTANT:
+// Yahan building names manually maintain kiye ja sakte hain.
+// Jo exact building names aap use karte hain, unko isi list me
+// ek-ek line par add karein.
+
+export const buildings = [
+  // Example:
+  // "Building Name 1",
+  // "Building Name 2",
+  // "Building Name 3",
 ];
-export const equipmentSheets=[
-"FCU","Split","FAHU","Plumbing Service","Dosing","MDB","SMDB","DB","ATS","VFD","Garbage","Heater","Intercom","Ex Fan","Str Prss Un","Capacitor bank","GB","Transfer Pump","Sump","Booster Pump","Chilled water pump","Filter pump","Chiller","Generator","SMA","Sliding",
-"LV Room","Basement Ex Fan"
+
+// ------------------------------------------------------------
+// EQUIPMENT SHEETS
+// ------------------------------------------------------------
+// IMPORTANT:
+// In names ko supplied Excel workbook ke ORIGINAL worksheet
+// names ke exactly same rakhna hai.
+//
+// Abhi placeholder structure rakha gaya hai taaki app error
+// na de. Exact worksheet names milne par yahan replace karenge.
+
+export const equipmentSheets = [
+  // Example:
+  // "AHU",
+  // "FCU",
+  // "Chiller",
+  // "Pump",
+  // "Exhaust Fan",
+  // "Lighting",
 ];
-export const clientDefault="East & West International";
-export const checklistHeaders=["Sl. No.","Service Specification Task","OK","Not OK","Remarks","Follow -up WO, if needed"];
-export const wccFields=["Job Order Number","Client","Project","Location","Tel. No.","Details of Work","Date & Time of Completion"];
-export const documents=["LPO","Invoice","Delivery Note","Petty Cash","Material Requisition","Job Completion"];
+
+// ------------------------------------------------------------
+// DEFAULT CLIENT
+// ------------------------------------------------------------
+
+export const clientDefault =
+  "East & West International";
+
+// ------------------------------------------------------------
+// CHECKLIST TABLE HEADERS
+// ------------------------------------------------------------
+
+export const checklistHeaders = [
+  "#",
+  "Service Specification / Task",
+  "OK",
+  "Not OK",
+  "Remarks",
+  "Follow-up WO",
+];
+
+// ------------------------------------------------------------
+// WCC ENCLOSED DOCUMENTS
+// ------------------------------------------------------------
+
+export const documents = [
+  "LPO",
+  "Invoice",
+  "Delivery Note",
+  "Petty Cash",
+  "Material Requisition",
+  "Job Completion",
+];
+
+// ------------------------------------------------------------
+// PPM OPTIONS
+// ------------------------------------------------------------
+
+export const ppmOptions = [
+  "1st PPM",
+  "2nd PPM",
+  "3rd PPM",
+  "4th PPM",
+];
+
+// ------------------------------------------------------------
+// FREQUENCY OPTIONS
+// ------------------------------------------------------------
+
+export const frequencies = [
+  "Monthly",
+  "Quarterly",
+  "Semi-Annual",
+  "Annual",
+  "Corrective / Complaint",
+];
+
+// ------------------------------------------------------------
+// SATISFACTION OPTIONS
+// ------------------------------------------------------------
+
+export const satisfactionOptions = [
+  "1. Poor",
+  "2. Satisfied",
+  "3. Good",
+  "4. Very Good",
+  "5. Excellent",
+];
