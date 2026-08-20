@@ -15,7 +15,7 @@ from generate_sheet import (
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = BASE_DIR / "templates"
-ASSETS = BASE_DIR / "assets"
+ASSETS = BASE_DIR
 OUTPUTS = BASE_DIR / "outputs"
 DB_PATH = BASE_DIR / "data" / "eifm_app.db"
 
@@ -33,7 +33,7 @@ st.set_page_config(
 st.markdown("""
 <style>
 .stApp {
-    background: linear-gradient(135deg, #07151a 0%, #101c22 55%, #07151a 100%);
+background: linear-gradient(180deg, #ffffff 0%, #ffffff 72%, #eef7f2 100%);
 }
 [data-testid="stSidebar"] {
     background: #0b151a;
