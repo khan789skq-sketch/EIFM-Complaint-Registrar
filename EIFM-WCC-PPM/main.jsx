@@ -896,36 +896,7 @@ function App({ user }) {
             <h2>Saved WCC & PPM Records</h2>
 
             <div>
-              <button
-                type="button"
-                className="small"
-                onClick={exportX}
-              >
-                Export Excel
-              </button>
-
-              <button
-                type="button"
-                className="small"
-                onClick={() => {
-                  setView("new");
-                  resetForm();
-                }}
-              >
-                New Record
-              </button>
-            </div>
-          </div>
-
-          <input
-            placeholder="Search building, WO, client..."
-            value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
-            }
-          />
-
-          <div className="cards">
+                        <div className="cards">
             {filtered.map((r) => (
               <div
                 className="record"
@@ -940,7 +911,6 @@ function App({ user }) {
                 </p>
 
                 <p>
-                                  <p>
                   Project: {r.project || "—"}
                 </p>
 
@@ -983,12 +953,16 @@ function App({ user }) {
               {type === "WCC"
                 ? "Work Completion Certificate"
                 : "Planned Preventive Maintenance"}
-          
+            </h2>
 
             <div>
               <button
                 type="button"
-                className={type === "WCC" ? "small active" : "small"}
+                className={
+                  type === "WCC"
+                    ? "small active"
+                    : "small"
+                }
                 onClick={() => setType("WCC")}
               >
                 WCC
@@ -996,8 +970,17 @@ function App({ user }) {
 
               <button
                 type="button"
-                className={type === "PPM" ? "small active" : "small"}
+                className={
+                  type === "PPM"
+                    ? "small active"
+                    : "small"
+                }
                 onClick={() => setType("PPM")}
+              >
+                PPM
+              </button>
+            </div>
+          </div>
               >
                 PPM
               </button>
