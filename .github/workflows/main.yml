@@ -57,6 +57,10 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Make Gradle executable
+        working-directory: EIFM-WCC-PPM/android
+        run: chmod +x gradlew
+
       - name: Build APK
         working-directory: EIFM-WCC-PPM/android
         run: ./gradlew assembleDebug --no-daemon
