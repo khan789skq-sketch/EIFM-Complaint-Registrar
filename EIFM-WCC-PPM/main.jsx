@@ -983,7 +983,7 @@ function App({ user }) {
               {type === "WCC"
                 ? "Work Completion Certificate"
                 : "Planned Preventive Maintenance"}
-            </h2>
+          
 
             <div>
               <button
