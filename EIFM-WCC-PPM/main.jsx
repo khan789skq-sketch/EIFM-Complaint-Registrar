@@ -377,6 +377,14 @@ function Checklist({ items, setItems }) {
   );
 }
 
+/* ---------------- PDF RECORD HELPER ---------------- */
+
+const selectedFromRecord = (record) =>
+  (record.equipment || []).map((name) => ({
+    name,
+    rows: (record.checklists || {})[name] || []
+  }));
+
 /* ---------------- MAIN APP ---------------- */
 
 function App({ user }) {
@@ -845,6 +853,7 @@ function App({ user }) {
 
         <nav>
           <button
+            type="button"
             className={view === "new" ? "active" : ""}
             onClick={() => setView("new")}
           >
@@ -852,6 +861,7 @@ function App({ user }) {
           </button>
 
           <button
+            type="button"
             className={
               view === "records" ? "active" : ""
             }
@@ -867,6 +877,7 @@ function App({ user }) {
           </span>
 
           <button
+            type="button"
             className="logout"
             onClick={() =>
               firebaseConfigured
@@ -886,6 +897,7 @@ function App({ user }) {
 
             <div>
               <button
+                type="button"
                 className="small"
                 onClick={exportX}
               >
@@ -893,6 +905,7 @@ function App({ user }) {
               </button>
 
               <button
+                type="button"
                 className="small"
                 onClick={() => {
                   setView("new");
@@ -923,17 +936,18 @@ function App({ user }) {
                 </b>
 
                 <p>
-                  Client: {r.client}
+                  Client: {r.client || "—"}
                 </p>
 
                 <p>
+                                  <p>
                   Project: {r.project || "—"}
                 </p>
 
                 <p>
                   {r.type === "PPM"
-                    ? r.ppm
-                    : `WO: ${r.wo}`}
+                    ? r.ppm || "—"
+                    : `WO: ${r.wo || "—"}`}
                 </p>
 
                 <p>
@@ -941,19 +955,330 @@ function App({ user }) {
                 </p>
 
                 <p>
-  Equipment: {r.equipment || "—"}
-</p>
-  
-  
+                  Equipment:{" "}
+                  {(r.equipment || []).join(", ") || "—"}
+                </p>
 
-</div>
-))}
-</div>
-  
+                <button
+                  type="button"
+                  className="small"
+                  onClick={() => pdf(r)}
+                >
+                  Export PDF
+                </button>
+              </div>
+            ))}
 
+            {!filtered.length && (
+              <div className="record">
+                No saved records found.
+              </div>
+            )}
+          </div>
+        </main>
+      ) : (
+        <main>
+          <div className="rowbetween">
+            <h2>
+              {type === "WCC"
+                ? "Work Completion Certificate"
+                : "Planned Preventive Maintenance"}
+            </h2>
 
+            <div>
+              <button
+                type="button"
+                className={type === "WCC" ? "small active" : "small"}
+                onClick={() => setType("WCC")}
+              >
+                WCC
+              </button>
 
+              <button
+                type="button"
+                className={type === "PPM" ? "small active" : "small"}
+                onClick={() => setType("PPM")}
+              >
+                PPM
+              </button>
+            </div>
+          </div>
 
+          <div className="formgrid">
+            <label>
+              Building / Location
+              <select
+                value={building}
+                onChange={(e) =>
+                  setBuilding(e.target.value)
+                }
+              >
+                <option value="">
+                  Select Building / Location
+                </option>
 
-                
-       
+                {buildings.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Client
+              <input
+                value={client}
+                onChange={(e) =>
+                  setClient(e.target.value)
+                }
+              />
+            </label>
+
+            <label>
+              Project
+              <input
+                value={project}
+                onChange={(e) =>
+                  setProject(e.target.value)
+                }
+              />
+            </label>
+
+            {type === "WCC" ? (
+              <label>
+                Work Order Number
+                <input
+                  value={wo}
+                  onChange={(e) =>
+                    setWo(e.target.value)
+                  }
+                />
+              </label>
+            ) : (
+              <label>
+                PPM
+                <select
+                  value={ppm}
+                  onChange={(e) =>
+                    setPpm(e.target.value)
+                  }
+                >
+                  <option value="1st PPM">1st PPM</option>
+                  <option value="2nd PPM">2nd PPM</option>
+                  <option value="3rd PPM">3rd PPM</option>
+                  <option value="4th PPM">4th PPM</option>
+                </select>
+              </label>
+            )}
+
+            <label>
+              Tel. No.
+              <input
+                value={tel}
+                onChange={(e) =>
+                  setTel(e.target.value)
+                }
+              />
+            </label>
+
+            <label>
+              Date & Time
+              <input
+                type="datetime-local"
+                value={date}
+                onChange={(e) =>
+                  setDate(e.target.value)
+                }
+              />
+            </label>
+          </div>
+
+          <label>
+            Details / Work Description
+            <textarea
+              value={details}
+              onChange={(e) =>
+                setDetails(e.target.value)
+              }
+              rows="4"
+            />
+          </label>
+
+          <div className="section">
+            <h3>Equipment</h3>
+
+            <div className="equipmentlist">
+              {equipmentSheets.map((e) => (
+                <label key={e} className="checkitem">
+                  <input
+                    type="checkbox"
+                    checked={equipment.includes(e)}
+                    onChange={() =>
+                      toggleEquipment(e)
+                    }
+                  />
+                  {e}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {selected.map((s) => (
+            <div className="section" key={s.name}>
+              <h3>{s.name}</h3>
+
+              <Checklist
+                items={s.rows}
+                setItems={(rows) =>
+                  setChecklists((current) => ({
+                    ...current,
+                    [s.name]: rows
+                  }))
+                }
+              />
+            </div>
+          ))}
+
+          {type === "WCC" && (
+            <>
+              <div className="section">
+                <h3>Enclosed Documents</h3>
+
+                <div className="equipmentlist">
+                  {documents.map((doc) => (
+                    <label
+                      key={doc}
+                      className="checkitem"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={documentsChecked.includes(doc)}
+                        onChange={() =>
+                          toggleDocument(doc)
+                        }
+                      />
+                      {doc}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="section">
+                <h3>Customer Satisfaction</h3>
+
+                <select
+                  value={satisfaction}
+                  onChange={(e) =>
+                    setSatisfaction(e.target.value)
+                  }
+                >
+                  <option value="">Select</option>
+                  <option value="Very Satisfied">
+                    Very Satisfied
+                  </option>
+                  <option value="Satisfied">
+                    Satisfied
+                  </option>
+                  <option value="Neutral">
+                    Neutral
+                  </option>
+                  <option value="Unsatisfied">
+                    Unsatisfied
+                  </option>
+                </select>
+              </div>
+
+              <label>
+                Remarks / Suggestions
+                <textarea
+                  value={remarks}
+                  onChange={(e) =>
+                    setRemarks(e.target.value)
+                  }
+                  rows="4"
+                />
+              </label>
+            </>
+          )}
+
+          <div className="section">
+            <h3>Signatures</h3>
+
+            <SignaturePad
+              title="Site In Charge"
+              value={siteSignature}
+              onChange={setSiteSignature}
+            />
+
+            <SignaturePad
+              title="HOD"
+              value={hodSignature}
+              onChange={setHodSignature}
+            />
+
+            <SignaturePad
+              title="Client"
+              value={clientSignature}
+              onChange={setClientSignature}
+            />
+          </div>
+
+          <div className="actions">
+            <button
+              type="button"
+              className="primary"
+              onClick={save}
+            >
+              Save {type}
+            </button>
+
+            <button
+              type="button"
+              className="small"
+              onClick={() => pdf()}
+            >
+              Export PDF
+            </button>
+
+            <button
+              type="button"
+              className="small"
+              onClick={resetForm}
+            >
+              Clear Form
+            </button>
+          </div>
+        </main>
+      )}
+    </div>
+  );
+}
+
+function Root() {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    if (!firebaseConfigured) {
+      setUser({
+        uid: "demo",
+        email: "demo@eifm.local"
+      });
+      return;
+    }
+
+    return onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+  }, []);
+
+  if (!user) {
+    return <Auth onUser={setUser} />;
+  }
+
+  return <App user={user} />;
+}
+
+createRoot(document.getElementById("root")).render(
+  <Root />
+);
