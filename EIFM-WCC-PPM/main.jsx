@@ -944,6 +944,16 @@ function App({ user }) {
   Equipment: {r.equipment || "—"}
 </p>
   
+  
+
+</div>
+))}
+</div>
+  
+
+</div>
+))}
+</div>
 
                 
        
