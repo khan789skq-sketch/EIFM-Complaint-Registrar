@@ -941,5 +941,9 @@ function App({ user }) {
                 </p>
 
                 <p>
-                  Equipment:{" "}
+  Equipment: {r.equipment || "—"}
+</p>
+  
+
+                
        
