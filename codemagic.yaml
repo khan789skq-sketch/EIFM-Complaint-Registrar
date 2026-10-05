@@ -6,9 +6,15 @@ workflows:
     environment:
       flutter: stable
     scripts:
-      - name: Create android project
+      - name: Create android project and arrange files (lib folder auto)
         script: |
+          mkdir -p /tmp/src
+          cp main.dart pages.dart pubspec.yaml /tmp/src/
           flutter create --platforms=android --project-name eifm_app --org com.eifm .
+          mkdir -p lib
+          cp /tmp/src/main.dart lib/main.dart
+          cp /tmp/src/pages.dart lib/pages.dart
+          cp /tmp/src/pubspec.yaml pubspec.yaml
       - name: Patch manifest (internet + image crop)
         script: |
           M=android/app/src/main/AndroidManifest.xml
