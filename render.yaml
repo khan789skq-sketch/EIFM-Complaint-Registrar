@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: eifm-backend
+    name: eifm-wcc-api
     runtime: python
     plan: starter
     buildCommand: pip install -r backend_requirements.txt
@@ -8,4 +8,4 @@ services:
     disk:
       name: eifm-data
       mountPath: /data
-      sizeGB: 1
+      sizeGB: 2
