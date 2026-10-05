@@ -9,7 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'pages.dart';
 
-const api = 'https://YOUR-BACKEND-URL'; // <-- yahan apne backend ka link daalo
+String api = 'https://eifm-backend.onrender.com';
 String? token;
 final refresh = ValueNotifier<int>(0);
 Map<String, String> get h => {'Authorization': 'Bearer ${token ?? ''}'};
@@ -25,7 +25,9 @@ Future<void> shareZip(int id) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  token = (await SharedPreferences.getInstance()).getString('token'); // saved login
+  final prefs = await SharedPreferences.getInstance();
+  token = prefs.getString('token');
+  api = prefs.getString('api') ?? api;
   runApp(MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
@@ -40,11 +42,13 @@ class Login extends StatefulWidget {
 }
 
 class _LoginState extends State<Login> {
-  final e = TextEditingController(), p = TextEditingController();
+  final e = TextEditingController(), p = TextEditingController(), sv = TextEditingController(text: api);
   bool busy = false;
 
   Future<void> go(String path) async {
     setState(() => busy = true);
+    api = sv.text.trim().replaceAll(RegExp(r'/+$'), '');
+    (await SharedPreferences.getInstance()).setString('api', api);
     try {
       final r = await http.post(Uri.parse('$api/$path'),
           headers: {'Content-Type': 'application/json'},
@@ -75,6 +79,8 @@ class _LoginState extends State<Login> {
             TextField(controller: e, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder())),
             const SizedBox(height: 12),
             TextField(controller: p, obscureText: true, decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder())),
+            const SizedBox(height: 12),
+            TextField(controller: sv, decoration: const InputDecoration(labelText: 'Server link', border: OutlineInputBorder())),
             const SizedBox(height: 20),
             FilledButton(onPressed: busy ? null : () => go('login'), child: const Text('Sign in')),
             TextButton(onPressed: busy ? null : () => go('signup'), child: const Text('Create account')),
@@ -118,4 +124,3 @@ class _HomeState extends State<Home> {
         ),
       );
 }
-
