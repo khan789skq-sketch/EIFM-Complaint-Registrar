@@ -9,7 +9,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'pages.dart';
 
-String api = 'https://eifm-backend.onrender.com';
+const String kServer = 'https://eifm-wcc-api.onrender.com';
+String api = kServer;
 String? token;
 final refresh = ValueNotifier<int>(0);
 Map<String, String> get h => {'Authorization': 'Bearer ${token ?? ''}'};
@@ -27,7 +28,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   token = prefs.getString('token');
-  api = prefs.getString('api') ?? api;
+  final custom = prefs.getString('api_custom');
+  api = (custom != null && custom.isNotEmpty) ? custom : kServer;
   runApp(MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
@@ -44,19 +46,31 @@ class Login extends StatefulWidget {
 class _LoginState extends State<Login> {
   final e = TextEditingController(), p = TextEditingController(), sv = TextEditingController(text: api);
   bool busy = false;
+  bool showServer = false; // hidden: long-press the title to show/hide the server link box
 
   Future<void> go(String path) async {
     setState(() => busy = true);
-    api = sv.text.trim().replaceAll(RegExp(r'/+$'), '');
-    (await SharedPreferences.getInstance()).setString('api', api);
+    final prefs = await SharedPreferences.getInstance();
+    if (showServer) {
+      final v = sv.text.trim().replaceAll(RegExp(r'/+$'), '');
+      if (v.isNotEmpty) {
+        api = v;
+        await prefs.setString('api_custom', v);
+      } else {
+        api = kServer;
+        await prefs.remove('api_custom');
+      }
+    }
     try {
-      final r = await http.post(Uri.parse('$api/$path'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'email': e.text, 'password': p.text}));
+      final r = await http
+          .post(Uri.parse('$api/$path'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'email': e.text.trim(), 'password': p.text}))
+          .timeout(const Duration(seconds: 90));
       final j = jsonDecode(r.body);
       if (r.statusCode == 200) {
         token = j['token'];
-        (await SharedPreferences.getInstance()).setString('token', token!);
+        await prefs.setString('token', token!);
         if (mounted) {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const Home()));
         }
@@ -64,7 +78,7 @@ class _LoginState extends State<Login> {
       }
       if (mounted) msg(context, '${j['detail']}');
     } catch (_) {
-      if (mounted) msg(context, 'Internet / server error');
+      if (mounted) msg(context, 'Internet / server error. Server may be waking up - wait 1 minute and try again.');
     }
     if (mounted) setState(() => busy = false);
   }
@@ -74,15 +88,21 @@ class _LoginState extends State<Login> {
         body: SafeArea(
           child: ListView(padding: const EdgeInsets.all(24), children: [
             const SizedBox(height: 60),
-            const Text('EIFM WCC & PPM', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+            GestureDetector(
+              onLongPress: () => setState(() => showServer = !showServer),
+              child: const Text('EIFM WCC & PPM', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+            ),
             const SizedBox(height: 30),
             TextField(controller: e, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder())),
             const SizedBox(height: 12),
             TextField(controller: p, obscureText: true, decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder())),
             const SizedBox(height: 12),
-            TextField(controller: sv, decoration: const InputDecoration(labelText: 'Server link', border: OutlineInputBorder())),
-            const SizedBox(height: 20),
-            FilledButton(onPressed: busy ? null : () => go('login'), child: const Text('Sign in')),
+            if (showServer) ...[
+              TextField(controller: sv, decoration: const InputDecoration(labelText: 'Server link', border: OutlineInputBorder())),
+              const SizedBox(height: 12),
+            ],
+            const SizedBox(height: 8),
+            FilledButton(onPressed: busy ? null : () => go('login'), child: Text(busy ? 'Please wait...' : 'Sign in')),
             TextButton(onPressed: busy ? null : () => go('signup'), child: const Text('Create account')),
           ]),
         ),
