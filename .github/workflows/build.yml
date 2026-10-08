@@ -34,24 +34,28 @@ jobs:
           cp /tmp/src/pages.dart lib/pages.dart 2>/dev/null || true
           cp /tmp/src/pubspec.yaml pubspec.yaml 2>/dev/null || true
 
-      - name: Set app name and EIFM logo icon
+      - name: Fix manifest and photo settings
         run: |
-          sudo apt-get install -y imagemagick
-          mkdir -p assets_icon
-          if [ -f /tmp/src/app_icon.png ]; then
-            cp /tmp/src/app_icon.png assets_icon/icon.png
-          else
-            convert /tmp/src/EIFM_logo.jpg -fuzz 10% -trim +repage -resize 880x880 -background white -gravity center -extent 1024x1024 assets_icon/icon.png
-          fi
-          convert assets_icon/icon.png -resize 680x680 -background white -gravity center -extent 1024x1024 assets_icon/icon_fg.png
-          sed -i 's/android:label="[^"]*"/android:label="EIFM"/' android/app/src/main/AndroidManifest.xml
           M=android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="[^"]*"/android:label="EIFM"/' $M
           sed -i 's#</application>#    <activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"#' $M
           cat $M
           sed -i 's#ImagePicker().pickImage(source: src)#ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 85)#' lib/pages.dart
           sed -i 's#maxWidth: 900, maxHeight: 675,#maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,#' lib/pages.dart
           grep -n "pickImage\|compressQuality" lib/pages.dart
+
+      - name: EIFM logo icon (build continues even if this fails)
+        continue-on-error: true
+        run: |
+          IM=$(command -v magick || command -v convert)
+          mkdir -p assets_icon
+          if [ -f /tmp/src/app_icon.png ]; then
+            cp /tmp/src/app_icon.png assets_icon/icon.png
+          else
+            $IM /tmp/src/EIFM_logo.jpg -fuzz 10% -trim +repage -resize 880x880 -background white -gravity center -extent 1024x1024 assets_icon/icon.png
+          fi
+          $IM assets_icon/icon.png -resize 680x680 -background white -gravity center -extent 1024x1024 assets_icon/icon_fg.png
           flutter pub get
           flutter pub add --dev flutter_launcher_icons
           printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "assets_icon/icon.png"\n  adaptive_icon_background: "#FFFFFF"\n  adaptive_icon_foreground: "assets_icon/icon_fg.png"\n' > flutter_launcher_icons.yaml
