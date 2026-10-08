@@ -1,43 +1,99 @@
 workflows:
-  eifm-android:
-    name: EIFM Android
-    max_build_duration: 30
-    instance_type: linux_x2
+  eifm-android-ios:
+    name: EIFM Android + iOS
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
     environment:
       flutter: stable
+
     scripts:
-      - name: Create android project and arrange files (lib folder auto)
+
+      # 1. Create Flutter project with BOTH Android and iOS folders
+      - name: Create Android + iOS project
         script: |
-          mkdir -p /tmp/src
-          cp main.dart pages.dart pubspec.yaml /tmp/src/
-          flutter create --platforms=android --project-name eifm_app --org com.eifm .
+          set -e
+
+          mkdir -p /tmp/eifm_source
+
+          cp main.dart /tmp/eifm_source/main.dart
+          cp pages.dart /tmp/eifm_source/pages.dart
+          cp pubspec.yaml /tmp/eifm_source/pubspec.yaml
+
+          flutter create \
+            --platforms=android,ios \
+            --project-name=eifm_app \
+            --org=com.eifm \
+            .
+
           mkdir -p lib
-          cp /tmp/src/main.dart lib/main.dart
-          cp /tmp/src/pages.dart lib/pages.dart
-          cp /tmp/src/pubspec.yaml pubspec.yaml
-      - name: Patch manifest (internet + image crop + app name)
+
+          cp /tmp/eifm_source/main.dart lib/main.dart
+          cp /tmp/eifm_source/pages.dart lib/pages.dart
+          cp /tmp/eifm_source/pubspec.yaml pubspec.yaml
+
+      # 2. Configure iOS permissions required by image picker
+      - name: Configure iOS permissions
         script: |
-          M=android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' $M
-          sed -i 's#</application>#<activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
-          sed -i 's#android:label="[^"]*"#android:label="EIFM"#' $M
-      - name: App icon from EIFM_logo.jpg
+          set -e
+
+          PLIST="ios/Runner/Info.plist"
+
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string EIFM needs camera access to take work completion photos." "$PLIST" 2>/dev/null || true
+
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string EIFM needs photo library access to select work completion photos." "$PLIST" 2>/dev/null || true
+
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string EIFM needs permission to save photos." "$PLIST" 2>/dev/null || true
+
+      # 3. Configure Android permissions and app name
+      - name: Configure Android
         script: |
-          python3 -m pip install pillow
-          python3 -c "from PIL import Image,ImageChops; im=Image.open('EIFM_logo.jpg').convert('RGB'); bb=ImageChops.difference(im,Image.new('RGB',im.size,(255,255,255))).point(lambda p:255 if p>20 else 0).getbbox(); im=im.crop(bb); s=int(max(im.size)*1.3); o=Image.new('RGB',(s,s),(255,255,255)); o.paste(im,((s-im.size[0])//2,(s-im.size[1])//2)); o.resize((1024,1024)).save('icon.png')"
-          flutter pub add dev:flutter_launcher_icons
-          cat > flutter_launcher_icons.yaml <<'EOF'
-          flutter_launcher_icons:
-            android: true
-            image_path: "icon.png"
-          EOF
-          dart run flutter_launcher_icons
+          set -e
+
+          M="android/app/src/main/AndroidManifest.xml"
+
+          sed -i.bak 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$M"
+
+          sed -i.bak 's#android:label="[^"]*"#android:label="EIFM"#' "$M"
+
+          rm -f "$M.bak"
+
+      # 4. Get Flutter packages
       - name: Get packages
-        script: flutter pub get
-      - name: Build APK
-        script: flutter build apk --release
-      - name: Build AAB
-        script: flutter build appbundle --release
+        script: |
+          set -e
+          flutter pub get
+
+      # 5. Check Flutter project
+      - name: Analyze project
+        script: |
+          flutter analyze --no-fatal-infos || true
+
+      # 6. Build Android APK
+      - name: Build Android APK
+        script: |
+          set -e
+          flutter build apk --release
+
+      # 7. Build Android App Bundle
+      - name: Build Android AAB
+        script: |
+          set -e
+          flutter build appbundle --release
+
+      # 8. Build iOS without signing
+      # This verifies that the iOS project and Flutter code compile.
+      - name: Build iOS
+        script: |
+          set -e
+          flutter build ipa --release --no-codesign
+
     artifacts:
-      - build/**/outputs/**/*.apk
-      - build/**/outputs/**/*.aab
+      - build/app/outputs/flutter-apk/*.apk
+      - build/app/outputs/bundle/release/*.aab
+      - build/ios/ipa/*.ipa
+
+    publishing:
+      email:
+        recipients:
+          
