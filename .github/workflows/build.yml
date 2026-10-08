@@ -1,73 +1,146 @@
-name: Build EIFM Flutter APK
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'pages.dart';
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
+const String kServer = 'https://eifm-wcc-api.onrender.com';
+String api = kServer;
+String? token;
+final refresh = ValueNotifier<int>(0);
+Map<String, String> get h => {'Authorization': 'Bearer ${token ?? ''}'};
+void msg(BuildContext c, String t) =>
+    ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(t)));
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+Future<void> shareZip(int id) async {
+  final r = await http.get(Uri.parse('$api/records/$id/package'), headers: h);
+  final d = await getTemporaryDirectory();
+  final f = File('${d.path}/EIFM_$id.zip')..writeAsBytesSync(r.bodyBytes);
+  await Share.shareXFiles([XFile(f.path)]);
+}
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  token = prefs.getString('token');
+  final custom = prefs.getString('api_custom');
+  api = (custom != null && custom.isNotEmpty) ? custom : kServer;
+  runApp(MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
+    home: token == null ? const Login() : const Home(),
+  ));
+}
 
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: 3.32.8
-          channel: stable
+class Login extends StatefulWidget {
+  const Login({super.key});
+  @override
+  State<Login> createState() => _LoginState();
+}
 
-      - name: Create project and arrange files
-        run: |
-          mkdir -p /tmp/src
-          cp main.dart pages.dart pubspec.yaml /tmp/src/ 2>/dev/null || true
-          cp app_icon.png /tmp/src/ 2>/dev/null || true
-          cp EIFM_logo.jpg /tmp/src/ 2>/dev/null || true
-          flutter create --platforms=android --project-name eifm_app .
-          rm -rf test
-          mkdir -p lib
-          cp /tmp/src/main.dart lib/main.dart 2>/dev/null || true
-          cp /tmp/src/pages.dart lib/pages.dart 2>/dev/null || true
-          cp /tmp/src/pubspec.yaml pubspec.yaml 2>/dev/null || true
+class _LoginState extends State<Login> {
+  final e = TextEditingController(), p = TextEditingController(), sv = TextEditingController(text: api);
+  bool busy = false;
+  bool showServer = false; // hidden: long-press the title to show/hide the server link box
 
-      - name: Fix manifest and photo settings
-        run: |
-          M=android/app/src/main/AndroidManifest.xml
-          sed -i 's/android:label="[^"]*"/android:label="EIFM"/' $M
-          sed -i 's#</application>#    <activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"#' $M
-          cat $M
-          sed -i 's#ImagePicker().pickImage(source: src)#ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 85)#' lib/pages.dart
-          sed -i 's#maxWidth: 900, maxHeight: 675,#maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,#' lib/pages.dart
-          grep -n "pickImage\|compressQuality" lib/pages.dart
+  Future<void> go(String path) async {
+    setState(() => busy = true);
+    final prefs = await SharedPreferences.getInstance();
+    if (showServer) {
+      final v = sv.text.trim().replaceAll(RegExp(r'/+$'), '');
+      if (v.isNotEmpty) {
+        api = v;
+        await prefs.setString('api_custom', v);
+      } else {
+        api = kServer;
+        await prefs.remove('api_custom');
+      }
+    }
+    try {
+      final r = await http
+          .post(Uri.parse('$api/$path'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'email': e.text.trim(), 'password': p.text}))
+          .timeout(const Duration(seconds: 90));
+      final j = jsonDecode(r.body);
+      if (r.statusCode == 200) {
+        token = j['token'];
+        await prefs.setString('token', token!);
+        if (mounted) {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const Home()));
+        }
+        return;
+      }
+      if (mounted) msg(context, '${j['detail']}');
+    } catch (_) {
+      if (mounted) msg(context, 'Internet / server error. Server may be waking up - wait 1 minute and try again.');
+    }
+    if (mounted) setState(() => busy = false);
+  }
 
-      - name: EIFM logo icon (build continues even if this fails)
-        continue-on-error: true
-        run: |
-          IM=$(command -v magick || command -v convert)
-          mkdir -p assets_icon
-          if [ -f /tmp/src/app_icon.png ]; then
-            cp /tmp/src/app_icon.png assets_icon/icon.png
-          else
-            $IM /tmp/src/EIFM_logo.jpg -fuzz 10% -trim +repage -resize 880x880 -background white -gravity center -extent 1024x1024 assets_icon/icon.png
-          fi
-          $IM assets_icon/icon.png -resize 680x680 -background white -gravity center -extent 1024x1024 assets_icon/icon_fg.png
-          flutter pub get
-          flutter pub add --dev flutter_launcher_icons
-          printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "assets_icon/icon.png"\n  adaptive_icon_background: "#FFFFFF"\n  adaptive_icon_foreground: "assets_icon/icon_fg.png"\n' > flutter_launcher_icons.yaml
-          dart run flutter_launcher_icons
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: SafeArea(
+          child: ListView(padding: const EdgeInsets.all(24), children: [
+            const SizedBox(height: 60),
+            GestureDetector(
+              onLongPress: () => setState(() => showServer = !showServer),
+              child: const Text('EIFM WCC & PPM', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 30),
+            TextField(controller: e, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder())),
+            const SizedBox(height: 12),
+            TextField(controller: p, obscureText: true, decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder())),
+            const SizedBox(height: 12),
+            if (showServer) ...[
+              TextField(controller: sv, decoration: const InputDecoration(labelText: 'Server link', border: OutlineInputBorder())),
+              const SizedBox(height: 12),
+            ],
+            const SizedBox(height: 8),
+            FilledButton(onPressed: busy ? null : () => go('login'), child: Text(busy ? 'Please wait...' : 'Sign in')),
+            TextButton(onPressed: busy ? null : () => go('signup'), child: const Text('Create account')),
+          ]),
+        ),
+      );
+}
 
-      - name: Get packages
-        run: flutter pub get
+class Home extends StatefulWidget {
+  const Home({super.key});
+  @override
+  State<Home> createState() => _HomeState();
+}
 
-      - name: Build Android APK
-        run: flutter build apk --debug
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: eifm-app-apk
-          path: build/app/outputs/flutter-apk/*.apk
+class _HomeState extends State<Home> {
+  int i = 0;
+  @override
+  Widget build(BuildContext c) => Scaffold(
+        appBar: AppBar(title: const Text('EIFM WCC & PPM'), actions: [
+          IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: () async {
+                (await SharedPreferences.getInstance()).remove('token');
+                token = null;
+                if (c.mounted) {
+                  Navigator.pushAndRemoveUntil(c, MaterialPageRoute(builder: (_) => const Login()), (_) => false);
+                }
+              })
+        ]),
+        body: IndexedStack(index: i, children: const [DashboardPage(), LibraryPage(), PpmPage(), WccPage(), RecordsPage()]),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: i,
+          onDestinationSelected: (v) => setState(() => i = v),
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.dashboard), label: 'Home'),
+            NavigationDestination(icon: Icon(Icons.apartment), label: 'Library'),
+            NavigationDestination(icon: Icon(Icons.build), label: 'New PPM'),
+            NavigationDestination(icon: Icon(Icons.description), label: 'New WCC'),
+            NavigationDestination(icon: Icon(Icons.folder), label: 'My Records'),
+          ],
+        ),
+      );
+}
