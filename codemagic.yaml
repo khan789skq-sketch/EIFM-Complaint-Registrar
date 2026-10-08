@@ -1,90 +1,39 @@
 workflows:
-  eifm-android:
-    name: EIFM Android
-    max_build_duration: 60
-    instance_type: mac_mini_m2
-    environment:
-      flutter: stable
-    scripts:
-      - name: Create android project and arrange files (lib folder auto)
-        script: |
-          mkdir -p /tmp/src
-          cp main.dart pages.dart pubspec.yaml /tmp/src/
-          flutter create --platforms=android --project-name eifm_app --org com.eifm .
-          mkdir -p lib
-          cp /tmp/src/main.dart lib/main.dart
-          cp /tmp/src/pages.dart lib/pages.dart
-          cp /tmp/src/pubspec.yaml pubspec.yaml
-      - name: Patch manifest, app name and Gradle fix
-        script: |
-          M=android/app/src/main/AndroidManifest.xml
-          sed -i.bak 's#<application#<uses-permission android:name="android.permission.INTERNET"/><application#' $M
-          sed -i.bak 's#</application>#<activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/></application>#' $M
-          sed -i.bak 's#android:label="[^"]*"#android:label="EIFM"#' $M
-          rm -f $M.bak
-          printf '\nandroid.builtInKotlin=false\nandroid.newDsl=false\n' >> android/gradle.properties
-      - name: App icon from EIFM_logo.jpg
-        script: |
-          python3 -m pip install pillow || python3 -m pip install --break-system-packages pillow
-          python3 -c "from PIL import Image,ImageChops; im=Image.open('EIFM_logo.jpg').convert('RGB'); bb=ImageChops.difference(im,Image.new('RGB',im.size,(255,255,255))).point(lambda p:255 if p>20 else 0).getbbox(); im=im.crop(bb); s=int(max(im.size)*1.3); o=Image.new('RGB',(s,s),(255,255,255)); o.paste(im,((s-im.size[0])//2,(s-im.size[1])//2)); o.resize((1024,1024)).save('icon.png')"
-          flutter pub add dev:flutter_launcher_icons
-          cat > flutter_launcher_icons.yaml <<'EOF'
-          flutter_launcher_icons:
-            android: true
-            image_path: "icon.png"
-          EOF
-          dart run flutter_launcher_icons
-      - name: Get packages
-        script: flutter pub get
-      - name: Build APK
-        script: flutter build apk --release
-      - name: Build AAB
-        script: flutter build appbundle --release
-    artifacts:
-      - build/**/outputs/**/*.apk
-      - build/**/outputs/**/*.aab
-
-  eifm-ios:
-    name: EIFM iOS
-    max_build_duration: 60
+  eifm-app:
+    name: EIFM App (Android & iOS)
+    max_build_duration: 30
     instance_type: mac_mini_m2
     environment:
       flutter: stable
       xcode: latest
-      cocoapods: default
     scripts:
-      - name: Create ios project and arrange files (lib folder auto)
+      - name: Create project and arrange files
         script: |
           mkdir -p /tmp/src
-          cp main.dart pages.dart pubspec.yaml /tmp/src/
-          flutter create --platforms=ios --project-name eifm_app --org com.eifm .
+          cp main.dart pages.dart pubspec.yaml /tmp/src/ 2>/dev/null || true
+          flutter create --platforms=android,ios .
           mkdir -p lib
-          cp /tmp/src/main.dart lib/main.dart
-          cp /tmp/src/pages.dart lib/pages.dart
-          cp /tmp/src/pubspec.yaml pubspec.yaml
-      - name: iOS permissions and app name
-        script: |
-          P=ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used for Before and After photos" $P
-          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string Photos are used for Before and After pictures" $P
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName EIFM" $P
-      - name: App icon from EIFM_logo.jpg
-        script: |
-          python3 -m pip install pillow || python3 -m pip install --break-system-packages pillow
-          python3 -c "from PIL import Image,ImageChops; im=Image.open('EIFM_logo.jpg').convert('RGB'); bb=ImageChops.difference(im,Image.new('RGB',im.size,(255,255,255))).point(lambda p:255 if p>20 else 0).getbbox(); im=im.crop(bb); s=int(max(im.size)*1.3); o=Image.new('RGB',(s,s),(255,255,255)); o.paste(im,((s-im.size[0])//2,(s-im.size[1])//2)); o.resize((1024,1024)).save('icon.png')"
-          flutter pub add dev:flutter_launcher_icons
-          cat > flutter_launcher_icons.yaml <<'EOF'
-          flutter_launcher_icons:
-            ios: true
-            remove_alpha_ios: true
-            image_path: "icon.png"
-          EOF
-          dart run flutter_launcher_icons
+          cp /tmp/src/main.dart lib/main.dart 2>/dev/null || true
+          cp /tmp/src/pages.dart lib/pages.dart 2>/dev/null || true
+          cp /tmp/src/pubspec.yaml pubspec.yaml 2>/dev/null || true
+
       - name: Get packages
-        script: flutter pub get
-      - name: Install pods
-        script: cd ios && pod install
-      - name: Build iOS (no codesign)
-        script: flutter build ios --release --no-codesign
+        script: |
+          flutter pub get
+
+      - name: Build Android APK
+        script: |
+          flutter build apk --debug
+
+      - name: Build iOS IPA
+        script: |
+          flutter build ios --debug --no-codesign
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r app-debug.ipa Payload
+
     artifacts:
-      - build/ios/iphoneos/*.app
+      - build/app/outputs/flutter-apk/*.apk
+      - build/ios/iphoneos/*.ipa
+      
