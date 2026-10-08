@@ -2,7 +2,7 @@ workflows:
   eifm-android:
     name: EIFM Android APK
     max_build_duration: 30
-    instance_type: linux_credits
+    instance_type: linux
     environment:
       flutter: stable
     scripts:
@@ -16,9 +16,10 @@ workflows:
         script: |
           flutter pub get
 
-      - name: Build Android APK (Debug)
+      - name: Build Android APK
         script: |
           flutter build apk --debug
 
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
+      
