@@ -1,4 +1,4 @@
-name: eifm_app
+Name: eifm_app
 description: EIFM WCC & PPM
 publish_to: 'none'
 version: 1.0.0+1
@@ -20,3 +20,8 @@ dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Logo image load karne ke liye yeh line zaruri hai:
+  assets:
+    - logo.png
+    
