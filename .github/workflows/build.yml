@@ -1,73 +1,25 @@
-name: Build EIFM Flutter APK
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: 3.32.8
-          channel: stable
-
-      - name: Create project and arrange files
-        run: |
-          mkdir -p /tmp/src
-          cp main.dart pages.dart pubspec.yaml /tmp/src/ 2>/dev/null || true
-          cp app_icon.png /tmp/src/ 2>/dev/null || true
-          cp EIFM_logo.jpg /tmp/src/ 2>/dev/null || true
-          flutter create --platforms=android --project-name eifm_app .
-          rm -rf test
-          mkdir -p lib
-          cp /tmp/src/main.dart lib/main.dart 2>/dev/null || true
-          cp /tmp/src/pages.dart lib/pages.dart 2>/dev/null || true
-          cp /tmp/src/pubspec.yaml pubspec.yaml 2>/dev/null || true
-
-      - name: Fix manifest and photo settings
-        run: |
-          M=android/app/src/main/AndroidManifest.xml
-          sed -i 's/android:label="[^"]*"/android:label="EIFM"/' $M
-          sed -i 's#</application>#    <activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"#' $M
-          cat $M
-          sed -i 's#ImagePicker().pickImage(source: src)#ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 85)#' lib/pages.dart
-          sed -i 's#maxWidth: 900, maxHeight: 675,#maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,#' lib/pages.dart
-          grep -n "pickImage\|compressQuality" lib/pages.dart
-
-      - name: EIFM logo icon (build continues even if this fails)
-        continue-on-error: true
-        run: |
-          IM=$(command -v magick || command -v convert)
-          mkdir -p assets_icon
-          if [ -f /tmp/src/app_icon.png ]; then
-            cp /tmp/src/app_icon.png assets_icon/icon.png
-          else
-            $IM /tmp/src/EIFM_logo.jpg -fuzz 10% -trim +repage -resize 880x880 -background white -gravity center -extent 1024x1024 assets_icon/icon.png
+workflows:
+  eifm-android:
+    name: EIFM Android APK
+    max_build_duration: 30
+    instance_type: linux
+    environment:
+      flutter: stable
+    scripts:
+      - name: Create base Flutter project if missing
+        script: |
+          if [ ! -d "android" ]; then
+            flutter create --platforms=android .
           fi
-          $IM assets_icon/icon.png -resize 680x680 -background white -gravity center -extent 1024x1024 assets_icon/icon_fg.png
-          flutter pub get
-          flutter pub add --dev flutter_launcher_icons
-          printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "assets_icon/icon.png"\n  adaptive_icon_background: "#FFFFFF"\n  adaptive_icon_foreground: "assets_icon/icon_fg.png"\n' > flutter_launcher_icons.yaml
-          dart run flutter_launcher_icons
 
-      - name: Get packages
-        run: flutter pub get
+      - name: Get dependencies
+        script: |
+          flutter pub get
 
       - name: Build Android APK
-        run: flutter build apk --debug
+        script: |
+          flutter build apk --debug
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: eifm-app-apk
-          path: build/app/outputs/flutter-apk/*.apk
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+      
