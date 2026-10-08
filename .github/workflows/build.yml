@@ -1,25 +1,37 @@
-workflows:
-  eifm-android:
-    name: EIFM Android APK
-    max_build_duration: 30
-    instance_type: linux
-    environment:
-      flutter: stable
-    scripts:
-      - name: Create base Flutter project if missing
-        script: |
-          if [ ! -d "android" ]; then
-            flutter create --platforms=android .
-          fi
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
 
       - name: Get dependencies
-        script: |
-          flutter pub get
+        run: flutter pub get
 
-      - name: Build Android APK
-        script: |
-          flutter build apk --debug
+      - name: Build APK
+        run: flutter build apk --debug
 
-    artifacts:
-      - build/app/outputs/flutter-apk/*.apk
-      
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          
