@@ -1,8 +1,8 @@
 workflows:
   eifm-android:
     name: EIFM Android APK
-    max_build_duration: 20
-    instance_type: linux
+    max_build_duration: 30
+    instance_type: linux_credits
     environment:
       flutter: stable
     scripts:
@@ -22,4 +22,3 @@ workflows:
 
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
-      
