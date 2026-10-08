@@ -1,99 +1,89 @@
 workflows:
-  eifm-android-ios:
-    name: EIFM Android + iOS
-    max_build_duration: 60
-    instance_type: mac_mini_m2
-
+  eifm-android:
+    name: EIFM Android
+    max_build_duration: 45
+    instance_type: linux_x2
     environment:
       flutter: stable
-
     scripts:
-
-      # 1. Create Flutter project with BOTH Android and iOS folders dynamically
-      - name: Create Android + iOS project
+      - name: Create android project and arrange files (lib folder auto)
         script: |
-          set -e
-
-          mkdir -p /tmp/eifm_source
-
-          [ -f main.dart ] && cp main.dart /tmp/eifm_source/main.dart || true
-          [ -f pages.dart ] && cp pages.dart /tmp/eifm_source/pages.dart || true
-          [ -f pubspec.yaml ] && cp pubspec.yaml /tmp/eifm_source/pubspec.yaml || true
-
-          flutter create \
-            --platforms=android,ios \
-            --project-name=eifm_app \
-            --org=com.eifm \
-            .
-
+          mkdir -p /tmp/src
+          cp main.dart pages.dart pubspec.yaml /tmp/src/
+          flutter create --platforms=android --project-name eifm_app --org com.eifm .
           mkdir -p lib
-
-          [ -f /tmp/eifm_source/main.dart ] && cp /tmp/eifm_source/main.dart lib/main.dart || true
-          [ -f /tmp/eifm_source/pages.dart ] && cp /tmp/eifm_source/pages.dart lib/pages.dart || true
-          [ -f /tmp/eifm_source/pubspec.yaml ] && cp /tmp/eifm_source/pubspec.yaml pubspec.yaml || true
-
-      # 2. Configure iOS permissions required by image picker
-      - name: Configure iOS permissions
+          cp /tmp/src/main.dart lib/main.dart
+          cp /tmp/src/pages.dart lib/pages.dart
+          cp /tmp/src/pubspec.yaml pubspec.yaml
+      - name: Patch manifest, app name and Gradle fix
         script: |
-          set -e
-
-          PLIST="ios/Runner/Info.plist"
-
-          if [ -f "$PLIST" ]; then
-            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string EIFM needs camera access to take work completion photos." "$PLIST" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string EIFM needs photo library access to select work completion photos." "$PLIST" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string EIFM needs permission to save photos." "$PLIST" 2>/dev/null || true
-          fi
-
-      # 3. Configure Android permissions and app name
-      - name: Configure Android
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' $M
+          sed -i 's#</application>#<activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
+          sed -i 's#android:label="[^"]*"#android:label="EIFM"#' $M
+          printf '\nandroid.builtInKotlin=false\nandroid.newDsl=false\n' >> android/gradle.properties
+      - name: App icon from EIFM_logo.jpg
         script: |
-          set -e
-
-          M="android/app/src/main/AndroidManifest.xml"
-
-          if [ -f "$M" ]; then
-            sed -i.bak 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$M"
-            sed -i.bak 's#android:label="[^"]*"#android:label="EIFM"#' "$M"
-            rm -f "$M.bak"
-          fi
-
-      # 4. Get Flutter packages
+          python3 -m pip install pillow
+          python3 -c "from PIL import Image,ImageChops; im=Image.open('EIFM_logo.jpg').convert('RGB'); bb=ImageChops.difference(im,Image.new('RGB',im.size,(255,255,255))).point(lambda p:255 if p>20 else 0).getbbox(); im=im.crop(bb); s=int(max(im.size)*1.3); o=Image.new('RGB',(s,s),(255,255,255)); o.paste(im,((s-im.size[0])//2,(s-im.size[1])//2)); o.resize((1024,1024)).save('icon.png')"
+          flutter pub add dev:flutter_launcher_icons
+          cat > flutter_launcher_icons.yaml <<'EOF'
+          flutter_launcher_icons:
+            android: true
+            image_path: "icon.png"
+          EOF
+          dart run flutter_launcher_icons
       - name: Get packages
-        script: |
-          set -e
-          flutter pub get
-
-      # 5. Check Flutter project
-      - name: Analyze project
-        script: |
-          flutter analyze --no-fatal-infos || true
-
-      # 6. Build Android APK
-      - name: Build Android APK
-        script: |
-          set -e
-          flutter build apk --release
-
-      # 7. Build Android App Bundle
-      - name: Build Android AAB
-        script: |
-          set -e
-          flutter build appbundle --release
-
-      # 8. Build iOS without signing
-      - name: Build iOS
-        script: |
-          set -e
-          flutter build ipa --release --no-codesign
-
+        script: flutter pub get
+      - name: Build APK
+        script: flutter build apk --release
+      - name: Build AAB
+        script: flutter build appbundle --release
     artifacts:
-      - build/app/outputs/flutter-apk/*.apk
-      - build/app/outputs/bundle/release/*.aab
-      - build/ios/ipa/*.ipa
+      - build/**/outputs/**/*.apk
+      - build/**/outputs/**/*.aab
 
-    publishing:
-      email:
-        recipients:
-          - khan789skq@gmail.com
-          
+  eifm-ios:
+    name: EIFM iOS
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Create ios project and arrange files (lib folder auto)
+        script: |
+          mkdir -p /tmp/src
+          cp main.dart pages.dart pubspec.yaml /tmp/src/
+          flutter create --platforms=ios --project-name eifm_app --org com.eifm .
+          mkdir -p lib
+          cp /tmp/src/main.dart lib/main.dart
+          cp /tmp/src/pages.dart lib/pages.dart
+          cp /tmp/src/pubspec.yaml pubspec.yaml
+      - name: iOS permissions and app name
+        script: |
+          P=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used for Before and After photos" $P
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string Photos are used for Before and After pictures" $P
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName EIFM" $P
+      - name: App icon from EIFM_logo.jpg
+        script: |
+          python3 -m pip install pillow
+          python3 -c "from PIL import Image,ImageChops; im=Image.open('EIFM_logo.jpg').convert('RGB'); bb=ImageChops.difference(im,Image.new('RGB',im.size,(255,255,255))).point(lambda p:255 if p>20 else 0).getbbox(); im=im.crop(bb); s=int(max(im.size)*1.3); o=Image.new('RGB',(s,s),(255,255,255)); o.paste(im,((s-im.size[0])//2,(s-im.size[1])//2)); o.resize((1024,1024)).save('icon.png')"
+          flutter pub add dev:flutter_launcher_icons
+          cat > flutter_launcher_icons.yaml <<'EOF'
+          flutter_launcher_icons:
+            ios: true
+            remove_alpha_ios: true
+            image_path: "icon.png"
+          EOF
+          dart run flutter_launcher_icons
+      - name: Get packages
+        script: flutter pub get
+      - name: Install pods
+        script: cd ios && pod install
+      - name: Build iOS (no codesign)
+        script: flutter build ios --release --no-codesign
+    artifacts:
+      - build/ios/iphoneos/*.app
