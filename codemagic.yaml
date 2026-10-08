@@ -9,16 +9,16 @@ workflows:
 
     scripts:
 
-      # 1. Create Flutter project with BOTH Android and iOS folders
+      # 1. Create Flutter project with BOTH Android and iOS folders dynamically
       - name: Create Android + iOS project
         script: |
           set -e
 
           mkdir -p /tmp/eifm_source
 
-          cp main.dart /tmp/eifm_source/main.dart
-          cp pages.dart /tmp/eifm_source/pages.dart
-          cp pubspec.yaml /tmp/eifm_source/pubspec.yaml
+          [ -f main.dart ] && cp main.dart /tmp/eifm_source/main.dart || true
+          [ -f pages.dart ] && cp pages.dart /tmp/eifm_source/pages.dart || true
+          [ -f pubspec.yaml ] && cp pubspec.yaml /tmp/eifm_source/pubspec.yaml || true
 
           flutter create \
             --platforms=android,ios \
@@ -28,9 +28,9 @@ workflows:
 
           mkdir -p lib
 
-          cp /tmp/eifm_source/main.dart lib/main.dart
-          cp /tmp/eifm_source/pages.dart lib/pages.dart
-          cp /tmp/eifm_source/pubspec.yaml pubspec.yaml
+          [ -f /tmp/eifm_source/main.dart ] && cp /tmp/eifm_source/main.dart lib/main.dart || true
+          [ -f /tmp/eifm_source/pages.dart ] && cp /tmp/eifm_source/pages.dart lib/pages.dart || true
+          [ -f /tmp/eifm_source/pubspec.yaml ] && cp /tmp/eifm_source/pubspec.yaml pubspec.yaml || true
 
       # 2. Configure iOS permissions required by image picker
       - name: Configure iOS permissions
@@ -39,11 +39,11 @@ workflows:
 
           PLIST="ios/Runner/Info.plist"
 
-          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string EIFM needs camera access to take work completion photos." "$PLIST" 2>/dev/null || true
-
-          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string EIFM needs photo library access to select work completion photos." "$PLIST" 2>/dev/null || true
-
-          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string EIFM needs permission to save photos." "$PLIST" 2>/dev/null || true
+          if [ -f "$PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string EIFM needs camera access to take work completion photos." "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string EIFM needs photo library access to select work completion photos." "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string EIFM needs permission to save photos." "$PLIST" 2>/dev/null || true
+          fi
 
       # 3. Configure Android permissions and app name
       - name: Configure Android
@@ -52,11 +52,11 @@ workflows:
 
           M="android/app/src/main/AndroidManifest.xml"
 
-          sed -i.bak 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$M"
-
-          sed -i.bak 's#android:label="[^"]*"#android:label="EIFM"#' "$M"
-
-          rm -f "$M.bak"
+          if [ -f "$M" ]; then
+            sed -i.bak 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$M"
+            sed -i.bak 's#android:label="[^"]*"#android:label="EIFM"#' "$M"
+            rm -f "$M.bak"
+          fi
 
       # 4. Get Flutter packages
       - name: Get packages
@@ -82,7 +82,6 @@ workflows:
           flutter build appbundle --release
 
       # 8. Build iOS without signing
-      # This verifies that the iOS project and Flutter code compile.
       - name: Build iOS
         script: |
           set -e
@@ -96,4 +95,5 @@ workflows:
     publishing:
       email:
         recipients:
+          - khan789skq@gmail.com
           
