@@ -91,24 +91,45 @@ jobs:
           exec > >(tee -a /tmp/build.log) 2>&1
           flutter pub get
 
-      - name: App icon (optional - build continues if this fails)
+      - name: Clean logo and app icon (optional - build continues if this fails)
         continue-on-error: true
         run: |
           exec > >(tee -a /tmp/build.log) 2>&1
           python3 -m pip install pillow
           python3 - <<'PY'
-          from PIL import Image
+          from PIL import Image, ImageChops
+          import os
           S = 1024
-          im = Image.open('assets/logo.png').convert('RGBA')
+          im = None
+          for c in ['app_icon.png', 'logo.png', 'EIFM_logo.jpg']:
+              p = '/tmp/src/' + c
+              if os.path.exists(p):
+                  try:
+                      t = Image.open(p)
+                      t.load()
+                      im = t.convert('RGBA')
+                      print('using logo file:', c)
+                      break
+                  except Exception as e:
+                      print('skipping broken image file:', c, e)
+          if im is None:
+              raise SystemExit('no valid logo image found')
+          flat = Image.alpha_composite(Image.new('RGBA', im.size, (255, 255, 255, 255)), im).convert('RGB')
+          diff = ImageChops.difference(flat, Image.new('RGB', flat.size, (255, 255, 255))).convert('L').point(lambda v: 255 if v > 25 else 0)
+          box = diff.getbbox()
+          if box:
+              flat = flat.crop(box)
           def square(scale):
-              canvas = Image.new('RGBA', (S, S), (255, 255, 255, 255))
-              w, h = im.size
+              canvas = Image.new('RGB', (S, S), (255, 255, 255))
+              w, h = flat.size
               k = (S * scale) / max(w, h)
-              r = im.resize((max(1, int(w * k)), max(1, int(h * k))))
-              canvas.paste(r, ((S - r.width) // 2, (S - r.height) // 2), r)
+              r = flat.resize((max(1, int(w * k)), max(1, int(h * k))), Image.LANCZOS)
+              canvas.paste(r, ((S - r.width) // 2, (S - r.height) // 2))
               return canvas
-          square(0.92).convert('RGB').save('icon_full.png')
-          square(0.60).convert('RGB').save('icon_fg.png')
+          square(0.86).save('assets/logo.png')
+          square(0.92).save('icon_full.png')
+          square(0.60).save('icon_fg.png')
+          print('logo files written')
           PY
           flutter pub add --dev flutter_launcher_icons
           printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "icon_full.png"\n  adaptive_icon_background: "#FFFFFF"\n  adaptive_icon_foreground: "icon_fg.png"\n' > flutter_launcher_icons.yaml
