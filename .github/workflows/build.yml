@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +26,9 @@ jobs:
 
       - name: Create project and arrange files
         run: |
+          exec > >(tee -a /tmp/build.log) 2>&1
+          echo "== files in repo =="; ls -la
+          echo "== pubspec.yaml in repo =="; cat pubspec.yaml || true
           mkdir -p /tmp/src
           cp main.dart pages.dart pubspec.yaml /tmp/src/ 2>/dev/null || true
           cp app_icon.png logo.png EIFM_logo.jpg /tmp/src/ 2>/dev/null || true
@@ -35,6 +41,7 @@ jobs:
 
       - name: Fix manifest and photo settings
         run: |
+          exec > >(tee -a /tmp/build.log) 2>&1
           M=android/app/src/main/AndroidManifest.xml
           sed -i 's/android:label="[^"]*"/android:label="EIFM"/' $M
           sed -i 's#</application>#    <activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
@@ -45,6 +52,7 @@ jobs:
 
       - name: Bundle EIFM logo inside the app
         run: |
+          exec > >(tee -a /tmp/build.log) 2>&1
           mkdir -p assets
           if [ -f /tmp/src/app_icon.png ]; then
             cp /tmp/src/app_icon.png assets/logo.png
@@ -70,10 +78,23 @@ jobs:
           ls -la assets
 
       - name: Get packages
-        run: flutter pub get
+        run: |
+          exec > >(tee -a /tmp/build.log) 2>&1
+          flutter pub get
 
       - name: Build Android APK
-        run: flutter build apk --debug
+        run: |
+          exec > >(tee -a /tmp/build.log) 2>&1
+          flutter build apk --debug
+
+      - name: Show error summary
+        if: failure()
+        run: |
+          sleep 2
+          echo '### Build error - last lines' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n 70 /tmp/build.log >> $GITHUB_STEP_SUMMARY || echo "no log (failure happened in setup steps)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@v4
         with:
