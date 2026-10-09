@@ -24,12 +24,46 @@ Future<void> shareZip(int id) async {
   await Share.shareXFiles([XFile(f.path)]);
 }
 
+// Wakes up the free Render server in the background so login is faster.
+void wake() async {
+  try {
+    await http.get(Uri.parse(api)).timeout(const Duration(seconds: 100));
+  } catch (_) {}
+}
+
+// After generating a record: share the real files (Word / Excel / PDF ...) one by one.
+// If the server gives no separate file, fall back to the zip package.
+Future<void> shareResult(int id) async {
+  final d = await getTemporaryDirectory();
+  final files = <XFile>[];
+  for (final field in ['file', 'checklist']) {
+    try {
+      final r = await http
+          .get(Uri.parse('$api/records/$id/$field'), headers: h)
+          .timeout(const Duration(seconds: 120));
+      if (r.statusCode != 200 || r.bodyBytes.isEmpty) continue;
+      final cd = r.headers['content-disposition'] ?? '';
+      final n = RegExp(r'filename="?([^";]+)').firstMatch(cd)?.group(1) ?? 'EIFM_${id}_$field';
+      final dir = Directory('${d.path}/$field')..createSync(recursive: true);
+      final f = File('${dir.path}/$n')..writeAsBytesSync(r.bodyBytes);
+      files.add(XFile(f.path));
+    } catch (_) {}
+  }
+  if (files.isEmpty) {
+    final r = await http.get(Uri.parse('$api/records/$id/package'), headers: h);
+    final f = File('${d.path}/EIFM_$id.zip')..writeAsBytesSync(r.bodyBytes);
+    files.add(XFile(f.path));
+  }
+  await Share.shareXFiles(files);
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   token = prefs.getString('token');
   final custom = prefs.getString('api_custom');
   api = (custom != null && custom.isNotEmpty) ? custom : kServer;
+  wake();
   runApp(MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
@@ -182,6 +216,15 @@ class _LoginState extends State<Login> {
                 child: Text(busy ? 'Please wait...' : 'Sign in'),
               ),
             ),
+            if (busy)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Server may take up to 1 minute to wake up the first time. Please wait...',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black54),
+                ),
+              ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: busy ? null : () => go('signup'),
@@ -206,7 +249,21 @@ class _HomeState extends State<Home> {
   @override
   Widget build(BuildContext c) => Scaffold(
         appBar: AppBar(
-          title: const Text('EIFM WCC & PPM'),
+          title: Row(children: [
+            Container(
+              height: 34,
+              width: 34,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+              child: Image.asset(
+                'assets/logo.png',
+                fit: BoxFit.contain,
+                errorBuilder: (ctx, err, st) => const Icon(Icons.apartment, size: 22, color: Color(0xFF0F5A3B)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Flexible(child: Text('EIFM WCC & PPM', overflow: TextOverflow.ellipsis)),
+          ]),
           backgroundColor: const Color(0xFF0F5A3B),
           foregroundColor: Colors.white,
           actions: [
