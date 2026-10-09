@@ -35,4 +35,55 @@ jobs:
 
       - name: Fix manifest, photo settings and bundle logo inside app
         run: |
-          M=
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="[^"]*"/android:label="EIFM"/' $M
+          sed -i 's#</application>#    <activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"#' $M
+          sed -i 's#ImagePicker().pickImage(source: src)#ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 85)#' lib/pages.dart
+          sed -i 's#maxWidth: 900, maxHeight: 675,#maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,#' lib/pages.dart
+          IM=$(command -v magick || command -v convert)
+          mkdir -p assets assets_icon
+          if [ -f /tmp/src/app_icon.png ]; then
+            cp /tmp/src/app_icon.png assets/logo.png
+          elif [ -f /tmp/src/logo.png ]; then
+            cp /tmp/src/logo.png assets/logo.png
+          elif [ -f /tmp/src/EIFM_logo.jpg ]; then
+            $IM /tmp/src/EIFM_logo.jpg -fuzz 10% -trim +repage -resize 880x880 -background white -gravity center -extent 1024x1024 assets/logo.png
+          else
+            $IM -size 512x512 xc:white assets/logo.png
+          fi
+          python3 - <<'PY'
+          import re
+          s = open('pubspec.yaml').read()
+          s = re.sub(r'\n  assets:\n(?:    - .*\n?)+', '\n', s)
+          line = '  uses-material-design: true'
+          if line in s:
+              s = s.replace(line, line + '\n  assets:\n    - assets/logo.png', 1)
+          else:
+              s = s.rstrip('\n') + '\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/logo.png\n'
+          open('pubspec.yaml', 'w').write(s)
+          PY
+          cat pubspec.yaml
+          ls -la assets
+
+      - name: App icon (build continues even if this fails)
+        continue-on-error: true
+        run: |
+          IM=$(command -v magick || command -v convert)
+          cp assets/logo.png assets_icon/icon.png
+          $IM assets_icon/icon.png -resize 680x680 -background white -gravity center -extent 1024x1024 assets_icon/icon_fg.png
+          flutter pub get
+          flutter pub add --dev flutter_launcher_icons
+          printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "assets_icon/icon.png"\n  adaptive_icon_background: "#FFFFFF"\n  adaptive_icon_foreground: "assets_icon/icon_fg.png"\n' > flutter_launcher_icons.yaml
+          dart run flutter_launcher_icons
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: flutter build apk --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eifm-app-apk
+          path: build/app/outputs/flutter-apk/*.apk
