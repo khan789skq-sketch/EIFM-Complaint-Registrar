@@ -89,9 +89,10 @@ class _LoginState extends State<Login> {
       }
       if (mounted) msg(context, '${j['detail']}');
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         msg(context,
             'Internet / server error. Server may be waking up - wait 1 minute and try again.');
+      }
     }
     if (mounted) setState(() => busy = false);
   }
@@ -102,21 +103,17 @@ class _LoginState extends State<Login> {
         body: SafeArea(
           child: ListView(padding: const EdgeInsets.all(24), children: [
             const SizedBox(height: 40),
-            
-            // EIFM Logo Header
+
+            // EIFM Logo Header (logo is bundled inside the app, no server needed)
             GestureDetector(
               onLongPress: () => setState(() => showServer = !showServer),
               child: Column(
                 children: [
-                  Container(
-                    height: 120,
-                    width: 120,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                    child: Image.network(
-                      'https://raw.githubusercontent.com/khan789skq-sketch/EIFM-Complaint-Registrar/main/logo.png',
+                  SizedBox(
+                    height: 150,
+                    width: 150,
+                    child: Image.asset(
+                      'assets/logo.png',
                       fit: BoxFit.contain,
                       errorBuilder: (context, error, stackTrace) => Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -141,7 +138,7 @@ class _LoginState extends State<Login> {
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 30),
             TextField(
               controller: e,
