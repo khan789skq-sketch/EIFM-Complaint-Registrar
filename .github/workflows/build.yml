@@ -24,36 +24,12 @@ jobs:
           flutter-version: 3.32.8
           channel: stable
 
-      - name: Create project and arrange files
+      - name: Prepare logo and clean pubspec
         run: |
           exec > >(tee -a /tmp/build.log) 2>&1
-          echo "== files in repo =="; ls -la
-          echo "== pubspec.yaml in repo =="; cat pubspec.yaml || true
-          mkdir -p /tmp/src
+          mkdir -p /tmp/src assets
           cp main.dart pages.dart pubspec.yaml /tmp/src/ 2>/dev/null || true
           cp app_icon.png logo.png EIFM_logo.jpg /tmp/src/ 2>/dev/null || true
-          flutter create --platforms=android --project-name eifm_app .
-          rm -rf test
-          mkdir -p lib
-          cp /tmp/src/main.dart lib/main.dart 2>/dev/null || true
-          cp /tmp/src/pages.dart lib/pages.dart 2>/dev/null || true
-          cp /tmp/src/pubspec.yaml pubspec.yaml 2>/dev/null || true
-
-      - name: Fix manifest and photo settings
-        run: |
-          exec > >(tee -a /tmp/build.log) 2>&1
-          M=android/app/src/main/AndroidManifest.xml
-          sed -i 's/android:label="[^"]*"/android:label="EIFM"/' $M
-          sed -i 's#</application>#    <activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"#' $M
-          sed -i 's#ImagePicker().pickImage(source: src)#ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 85)#' lib/pages.dart
-          sed -i 's#maxWidth: 900, maxHeight: 675,#maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,#' lib/pages.dart
-          cat $M
-
-      - name: Bundle EIFM logo inside the app
-        run: |
-          exec > >(tee -a /tmp/build.log) 2>&1
-          mkdir -p assets
           if [ -f /tmp/src/app_icon.png ]; then
             cp /tmp/src/app_icon.png assets/logo.png
           elif [ -f /tmp/src/logo.png ]; then
@@ -65,17 +41,37 @@ jobs:
           fi
           python3 - <<'PY'
           import re
-          s = open('pubspec.yaml').read()
-          s = re.sub(r'\n  assets:\n(?:    - .*\n?)+', '\n', s)
-          line = '  uses-material-design: true'
-          if line in s:
-              s = s.replace(line, line + '\n  assets:\n    - assets/logo.png', 1)
-          else:
-              s = s.rstrip('\n') + '\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/logo.png\n'
-          open('pubspec.yaml', 'w').write(s)
+          s = open('pubspec.yaml').read().replace('\r\n', '\n')
+          m = re.search(r'(?m)^flutter:\s*$', s)
+          base = s[:m.start()] if m else s
+          base = base.rstrip('\n') + '\n\n'
+          base += 'flutter:\n  uses-material-design: true\n  assets:\n    - assets/logo.png\n'
+          open('pubspec.yaml', 'w').write(base)
           PY
-          cat pubspec.yaml
+          cp pubspec.yaml /tmp/pubspec_clean.yaml
+          echo "== clean pubspec =="; cat pubspec.yaml
           ls -la assets
+
+      - name: Create project and arrange files
+        run: |
+          exec > >(tee -a /tmp/build.log) 2>&1
+          flutter create --platforms=android --project-name eifm_app .
+          rm -rf test
+          mkdir -p lib
+          cp /tmp/src/main.dart lib/main.dart 2>/dev/null || true
+          cp /tmp/src/pages.dart lib/pages.dart 2>/dev/null || true
+          cp /tmp/pubspec_clean.yaml pubspec.yaml
+
+      - name: Fix manifest and photo settings
+        run: |
+          exec > >(tee -a /tmp/build.log) 2>&1
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="[^"]*"/android:label="EIFM"/' $M
+          sed -i 's#</application>#    <activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"#' $M
+          sed -i 's#ImagePicker().pickImage(source: src)#ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 85)#' lib/pages.dart
+          sed -i 's#maxWidth: 900, maxHeight: 675,#maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,#' lib/pages.dart
+          cat $M
 
       - name: Get packages
         run: |
