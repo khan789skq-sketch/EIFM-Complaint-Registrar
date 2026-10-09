@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Global variables & colors
+// Colors & Global State
 const Color kGreen = Color(0xFF0B5D3F);
 String userEmail = '';
 ValueNotifier<int> refresh = ValueNotifier<int>(0);
@@ -18,7 +18,7 @@ class EIFMApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'EIFM Complaints & Reports',
+      title: 'EIFM - Work Completion Certificate',
       theme: ThemeData(
         useMaterial3: true,
         primaryColor: kGreen,
@@ -114,7 +114,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-// ---------------- Login Screen ----------------
+// ---------------- Green & White Login Screen ----------------
 class GreenEIFMLoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
   const GreenEIFMLoginScreen({super.key, required this.onLoginSuccess});
@@ -131,7 +131,7 @@ class _GreenEIFMLoginScreenState extends State<GreenEIFMLoginScreen> {
   Future<void> _handleAuth() async {
     if (_emailController.text.trim().isEmpty || _passwordController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter Email and Password')),
+        const SnackBar(content: Text('Please enter Username/Email and Password')),
       );
       return;
     }
@@ -152,18 +152,14 @@ class _GreenEIFMLoginScreenState extends State<GreenEIFMLoginScreen> {
           padding: const EdgeInsets.all(28.0),
           child: Column(
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
+              // EIFM Logo Display
               Image.asset(
                 'EIFM_logo.jpg',
-                height: 110,
-                errorBuilder: (context, error, stackTrace) => Column(
-                  children: const [
-                    Icon(Icons.business_rounded, size: 70, color: kGreen),
-                    Text('EIFM', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: kGreen)),
-                  ],
-                ),
+                height: 120,
+                fit: BoxFit.contain,
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -171,25 +167,41 @@ class _GreenEIFMLoginScreenState extends State<GreenEIFMLoginScreen> {
                   style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _isSignUp ? "Register to access EIFM certificates" : "Welcome back! Please login to your account.",
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ),
+              const SizedBox(height: 28),
               TextField(
                 controller: _emailController,
-                decoration: const InputDecoration(labelText: "Username or Email", border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: "Username or Email",
+                  prefixIcon: Icon(Icons.person_outline, color: kGreen),
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: _passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: "Password", border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: "Password",
+                  prefixIcon: Icon(Icons.lock_outline, color: kGreen),
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: kGreen, foregroundColor: Colors.white),
                   onPressed: _handleAuth,
-                  child: Text(_isSignUp ? "Sign Up" : "Login"),
+                  child: Text(_isSignUp ? "Sign Up" : "Login", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -245,7 +257,7 @@ class HomeDashboard extends StatelessWidget {
           SizedBox(
             height: 56,
             width: 56,
-            child: Image.asset('EIFM_logo.jpg', fit: BoxFit.contain, errorBuilder: (ctx, err, st) => const Icon(Icons.business, color: kGreen, size: 40)),
+            child: Image.asset('EIFM_logo.jpg', fit: BoxFit.contain),
           ),
         ]),
         const SizedBox(height: 16),
@@ -271,27 +283,41 @@ class HomeDashboard extends StatelessWidget {
           TextButton(onPressed: () => goTab(3), child: const Text('View All', style: TextStyle(color: kGreen))),
         ]),
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
-          child: const ListTile(
-            title: Text('WCC-2025-0001', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            subtitle: Text('Project A - Building Maintenance', style: TextStyle(fontSize: 12)),
-            trailing: Text('Completed', style: TextStyle(color: kGreen, fontWeight: FontWeight.bold)),
-          ),
+          child: Column(children: [
+            _buildWccTile('WCC-2025-0001', 'Project A - Building Works', 'Completed', Colors.green),
+            const Divider(height: 1),
+            _buildWccTile('WCC-2025-0002', 'Project B - MEP Works', 'In Progress', Colors.orange),
+            const Divider(height: 1),
+            _buildWccTile('WCC-2025-0003', 'Project C - Finishing Works', 'Completed', Colors.green),
+          ]),
         ),
       ]),
     );
   }
+
+  Widget _buildWccTile(String id, String title, String status, Color statusColor) {
+    return ListTile(
+      title: Text(id, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      subtitle: Text(title, style: const TextStyle(fontSize: 12)),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(color: statusColor.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+        child: Text(status, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
 }
 
-// Placeholders for other pages
-class WccPage extends StatelessWidget { const WccPage({super.key}); @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('New WCC')), body: const Center(child: Text('WCC Form'))); }
-class PpmPage extends StatelessWidget { const PpmPage({super.key}); @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('New PPM')), body: const Center(child: Text('PPM Form'))); }
-class RecordsPage extends StatelessWidget { const RecordsPage({super.key}); @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('My Records')), body: const Center(child: Text('Saved PDF/Word Records'))); }
+// ------------ Placeholder Pages ------------
+class WccPage extends StatelessWidget { const WccPage({super.key}); @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('New WCC')), body: const Center(child: Text('WCC Form Step-by-Step'))); }
+class PpmPage extends StatelessWidget { const PpmPage({super.key}); @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('New PPM')), body: const Center(child: Text('PPM Service Report Form'))); }
+class RecordsPage extends StatelessWidget { const RecordsPage({super.key}); @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('My Records')), body: const Center(child: Text('Saved Records / PDF / Word Files'))); }
 
 // ---------------- More / Settings ----------------
 class MorePage extends StatelessWidget {
@@ -326,4 +352,3 @@ class MorePage extends StatelessWidget {
         ),
       ]);
 }
-
