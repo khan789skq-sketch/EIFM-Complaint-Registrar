@@ -74,10 +74,45 @@ jobs:
           sed -i 's#maxWidth: 900, maxHeight: 675,#maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,#' lib/pages.dart
           cat $M
 
+      - name: Patch pages.dart to share real files
+        run: |
+          exec > >(tee -a /tmp/build.log) 2>&1
+          python3 - <<'PY'
+          p = 'lib/pages.dart'
+          s = open(p).read()
+          old = "shareFile(jsonDecode(r.body)['id'], 'package')"
+          new = "shareResult(jsonDecode(r.body)['id'])"
+          print('replacements:', s.count(old))
+          open(p, 'w').write(s.replace(old, new))
+          PY
+
       - name: Get packages
         run: |
           exec > >(tee -a /tmp/build.log) 2>&1
           flutter pub get
+
+      - name: App icon (optional - build continues if this fails)
+        continue-on-error: true
+        run: |
+          exec > >(tee -a /tmp/build.log) 2>&1
+          python3 -m pip install pillow
+          python3 - <<'PY'
+          from PIL import Image
+          S = 1024
+          im = Image.open('assets/logo.png').convert('RGBA')
+          def square(scale):
+              canvas = Image.new('RGBA', (S, S), (255, 255, 255, 255))
+              w, h = im.size
+              k = (S * scale) / max(w, h)
+              r = im.resize((max(1, int(w * k)), max(1, int(h * k))))
+              canvas.paste(r, ((S - r.width) // 2, (S - r.height) // 2), r)
+              return canvas
+          square(0.92).convert('RGB').save('icon_full.png')
+          square(0.60).convert('RGB').save('icon_fg.png')
+          PY
+          flutter pub add --dev flutter_launcher_icons
+          printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "icon_full.png"\n  adaptive_icon_background: "#FFFFFF"\n  adaptive_icon_foreground: "icon_fg.png"\n' > flutter_launcher_icons.yaml
+          dart run flutter_launcher_icons
 
       - name: Build Android APK
         run: |
