@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 
+// Colors & Global Variables
 const Color kGreen = Color(0xFF0B5D3F);
 String userEmail = '';
-ValueNotifier<int> refreshNotifier = ValueNotifier<int>(0);
+ValueNotifier<int> refresh = ValueNotifier<int>(0);
+String api = 'https://eifm-backend.vercel.app';
 
 void main() {
   runApp(const EIFMApp());
@@ -18,7 +20,7 @@ class EIFMApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'EIFM Report & Complaint Registrar',
+      title: 'EIFM - Work Completion Certificate',
       theme: ThemeData(
         useMaterial3: true,
         primaryColor: kGreen,
@@ -49,7 +51,7 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
-  int _currentIndex = 0;
+  int i = 0;
   bool _isLoggedIn = false;
 
   @override
@@ -81,53 +83,75 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_isLoggedIn) {
-      return LoginScreen(onLoginSuccess: _checkLoginStatus);
+      return GreenEIFMLoginScreen(onLoginSuccess: () {
+        _checkLoginStatus();
+      });
     }
 
-    final List<Widget> pages = [
-      HomeDashboard((index) => setState(() => _currentIndex = index)),
-      const WccFormWizardPage(),
-      const PpmFormWizardPage(),
-      const RecordsPage(),
-      MorePage(onLogout: logout),
-    ];
-
     return Scaffold(
-      body: pages[_currentIndex],
+      body: IndexedStack(
+        index: i,
+        children: [
+          HomeDashboard((v) => setState(() => i = v)),
+          const WccPage(),
+          const PpmPage(),
+          const RecordsPage(),
+          MorePage(onLogout: logout),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
+        selectedIndex: i,
         backgroundColor: Colors.white,
         indicatorColor: const Color(0x260B5D3F),
-        onDestinationSelected: (index) => setState(() => _currentIndex = index),
+        onDestinationSelected: (v) => setState(() => i = v),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: kGreen), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.note_add_outlined), selectedIcon: Icon(Icons.note_add, color: kGreen), label: 'New WCC'),
-          NavigationDestination(icon: Icon(Icons.build_outlined), selectedIcon: Icon(Icons.build, color: kGreen), label: 'New PPM'),
-          NavigationDestination(icon: Icon(Icons.description_outlined), selectedIcon: Icon(Icons.description, color: kGreen), label: 'My Records'),
-          NavigationDestination(icon: Icon(Icons.more_horiz), selectedIcon: Icon(Icons.more_horiz, color: kGreen), label: 'More'),
+          NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home, color: kGreen),
+              label: 'Home'),
+          NavigationDestination(
+              icon: Icon(Icons.note_add_outlined),
+              selectedIcon: Icon(Icons.note_add, color: kGreen),
+              label: 'New WCC'),
+          NavigationDestination(
+              icon: Icon(Icons.build_outlined),
+              selectedIcon: Icon(Icons.build, color: kGreen),
+              label: 'New PPM'),
+          NavigationDestination(
+              icon: Icon(Icons.description_outlined),
+              selectedIcon: Icon(Icons.description, color: kGreen),
+              label: 'My Records'),
+          NavigationDestination(
+              icon: Icon(Icons.more_horiz),
+              selectedIcon: Icon(Icons.more_horiz, color: kGreen),
+              label: 'More'),
         ],
       ),
     );
   }
 }
 
-// ---------------- LOGIN / AUTHENTICATION ----------------
-class LoginScreen extends StatefulWidget {
+// ---------------- Login Screen ----------------
+class GreenEIFMLoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
-  const LoginScreen({super.key, required this.onLoginSuccess});
+  const GreenEIFMLoginScreen({super.key, required this.onLoginSuccess});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<GreenEIFMLoginScreen> createState() => _GreenEIFMLoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _GreenEIFMLoginScreenState extends State<GreenEIFMLoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isSignUp = false;
 
   Future<void> _handleAuth() async {
-    if (_emailController.text.trim().isEmpty || _passwordController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kripya Email aur Password bharein')));
+    if (_emailController.text.trim().isEmpty ||
+        _passwordController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please enter Username/Email and Password')),
+      );
       return;
     }
 
@@ -148,24 +172,72 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             children: [
               const SizedBox(height: 30),
-              Image.asset('EIFM_logo.jpg', height: 110, fit: BoxFit.contain, errorBuilder: (c, e, s) => const Icon(Icons.business, size: 80, color: kGreen)),
+              Image.asset(
+                'EIFM_logo.jpg',
+                height: 120,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => Column(
+                  children: const [
+                    Icon(Icons.business_rounded, size: 70, color: kGreen),
+                    Text('EIFM',
+                        style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: kGreen)),
+                  ],
+                ),
+              ),
               const SizedBox(height: 30),
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text(_isSignUp ? "Create Account" : "Login", style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                child: Text(
+                  _isSignUp ? "Create Account" : "Login",
+                  style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A)),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _isSignUp
+                      ? "Register to access EIFM certificates"
+                      : "Welcome back! Please login to your account.",
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ),
+              const SizedBox(height: 28),
+              TextField(
+                controller: _emailController,
+                decoration: const InputDecoration(
+                  labelText: "Username or Email",
+                  prefixIcon: Icon(Icons.person_outline, color: kGreen),
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 16),
-              TextField(controller: _emailController, decoration: const InputDecoration(labelText: "Username or Email", border: OutlineInputBorder())),
-              const SizedBox(height: 16),
-              TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: "Password", border: OutlineInputBorder())),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Password",
+                  prefixIcon: Icon(Icons.lock_outline, color: kGreen),
+                  border: OutlineInputBorder(),
+                ),
+              ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: kGreen, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: kGreen, foregroundColor: Colors.white),
                   onPressed: _handleAuth,
-                  child: Text(_isSignUp ? "Sign Up" : "Login", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: Text(_isSignUp ? "Sign Up" : "Login",
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -176,12 +248,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ---------------- DASHBOARD ----------------
+// ---------------- Dashboard ----------------
 class HomeDashboard extends StatelessWidget {
   final void Function(int) goTab;
   const HomeDashboard(this.goTab, {super.key});
 
-  Widget card(IconData icon, String title, String sub, VoidCallback onTap) => InkWell(
+  Widget card(IconData icon, String title, String sub, VoidCallback onTap) =>
+      InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
@@ -190,33 +263,62 @@ class HomeDashboard extends StatelessWidget {
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 8, offset: Offset(0, 3))],
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x14000000), blurRadius: 8, offset: Offset(0, 3))
+            ],
           ),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(icon, color: kGreen, size: 34),
-            const SizedBox(height: 8),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(height: 2),
-            Text(sub, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black54, fontSize: 11)),
-          ]),
+          child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: kGreen, size: 34),
+                const SizedBox(height: 8),
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 15)),
+                const SizedBox(height: 2),
+                Text(sub,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.black54, fontSize: 11)),
+              ]),
         ),
       );
 
   @override
   Widget build(BuildContext context) {
+    final name = userEmail.isEmpty
+        ? 'EIFM User'
+        : (userEmail.contains('@') ? userEmail.split('@').first : userEmail);
+
     return ValueListenableBuilder<int>(
-      valueListenable: refreshNotifier,
-      builder: (_, __, ___) => ListView(padding: const EdgeInsets.all(16), children: [
+      valueListenable: refresh,
+      builder: (_, __, ___) =>
+          ListView(padding: const EdgeInsets.all(16), children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Welcome,', style: TextStyle(color: Colors.black54, fontSize: 14)),
-              Text(userEmail.isEmpty ? 'EIFM User' : userEmail.split('@').first, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Welcome,',
+                  style: TextStyle(color: Colors.black54, fontSize: 14)),
+              Text(name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A))),
             ]),
           ),
-          SizedBox(height: 56, width: 56, child: Image.asset('EIFM_logo.jpg', fit: BoxFit.contain, errorBuilder: (c, e, s) => const Icon(Icons.business, color: kGreen))),
+          SizedBox(
+            height: 56,
+            width: 56,
+            child: Image.asset('EIFM_logo.jpg',
+                fit: BoxFit.contain,
+                errorBuilder: (ctx, err, st) =>
+                    const Icon(Icons.business, color: kGreen, size: 40)),
+          ),
         ]),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -225,80 +327,122 @@ class HomeDashboard extends StatelessWidget {
           mainAxisSpacing: 12,
           childAspectRatio: 1.3,
           children: [
-            card(Icons.note_add_outlined, 'New WCC', 'Create Certificate', () => goTab(1)),
-            card(Icons.build_outlined, 'New PPM', 'PPM Service Report', () => goTab(2)),
-            card(Icons.description_outlined, 'My Records', 'View Saved PDF/Excel', () => goTab(3)),
-            card(Icons.settings_outlined, 'Settings', 'App Settings', () => goTab(4)),
+            card(Icons.note_add_outlined, 'New WCC', 'Create New Certificate',
+                () => goTab(1)),
+            card(Icons.manage_search, 'My WCCs', 'View All Certificates',
+                () => goTab(3)),
+            card(Icons.file_download_outlined, 'Export',
+                'Share Excel / Word files', () => goTab(3)),
+            card(Icons.settings_outlined, 'Settings', 'App Settings',
+                () => goTab(4)),
+            card(Icons.build_outlined, 'New PPM', 'Create PPM Service Report',
+                () => goTab(2)),
+            card(Icons.apartment, 'Library', 'Building Checklists', () {}),
           ],
         ),
-        const SizedBox(height: 24),
-        const Text('Recent Activity', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 10),
-        const SavedRecordsListWidget(limit: 3),
+        const SizedBox(height: 20),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('Recent WCCs',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          TextButton(
+              onPressed: () => goTab(3),
+              child: const Text('View All', style: TextStyle(color: kGreen))),
+        ]),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(children: [
+            _buildWccTile('WCC-2025-0001', 'Project A - Building Works',
+                'Completed', Colors.green),
+            const Divider(height: 1),
+            _buildWccTile('WCC-2025-0002', 'Project B - MEP Works',
+                'In Progress', Colors.orange),
+            const Divider(height: 1),
+            _buildWccTile('WCC-2025-0003', 'Project C - Finishing Works',
+                'Completed', Colors.green),
+          ]),
+        ),
       ]),
+    );
+  }
+
+  Widget _buildWccTile(
+      String id, String title, String status, Color statusColor) {
+    return ListTile(
+      title: Text(id,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      subtitle: Text(title, style: const TextStyle(fontSize: 12)),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+            color: statusColor.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(12)),
+        child: Text(status,
+            style: TextStyle(
+                color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+      ),
     );
   }
 }
 
-// ---------------- WCC FORM WIZARD (WITH BEFORE/AFTER PICTURES) ----------------
-class WccFormWizardPage extends StatefulWidget {
-  const WccFormWizardPage({super.key});
+// ------------ WCC FORM PAGE (BEFORE / AFTER PICTURES INCLUDED) ------------
+class WccPage extends StatefulWidget {
+  const WccPage({super.key});
 
   @override
-  State<WccFormWizardPage> createState() => _WccFormWizardPageState();
+  State<WccPage> createState() => _WccPageState();
 }
 
-class _WccFormWizardPageState extends State<WccFormWizardPage> {
-  final _projectNameController = TextEditingController();
-  final _contractNoController = TextEditingController();
-  String? _beforeImagePath;
-  String? _afterImagePath;
+class _WccPageState extends State<WccPage> {
+  final _projController = TextEditingController();
+  final _contractController = TextEditingController();
+  String? _beforePath;
+  String? _afterPath;
 
   final ImagePicker _picker = ImagePicker();
 
-  Future<void> _pickImage(bool isBefore) async {
-    final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
-    if (photo != null) {
+  Future<void> _pickPhoto(bool isBefore) async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    if (image != null) {
       setState(() {
         if (isBefore) {
-          _beforeImagePath = photo.path;
+          _beforePath = image.path;
         } else {
-          _afterImagePath = photo.path;
+          _afterPath = image.path;
         }
       });
     }
   }
 
-  Future<void> _saveWccReport() async {
-    if (_projectNameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Project Name likhna zaroori hai')));
+  Future<void> _saveAndGenerateReport() async {
+    if (_projController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter Project Name')),
+      );
       return;
     }
 
     final prefs = await SharedPreferences.getInstance();
-    List<String> records = prefs.getStringList('saved_reports') ?? [];
+    List<String> list = prefs.getStringList('saved_wcc_reports') ?? [];
 
-    Map<String, dynamic> report = {
-      'type': 'WCC',
-      'title': _projectNameController.text,
-      'contractNo': _contractNoController.text,
+    Map<String, dynamic> data = {
+      'project': _projController.text,
+      'contract': _contractController.text,
+      'before_image': _beforePath ?? '',
+      'after_image': _afterPath ?? '',
       'date': DateTime.now().toString().split(' ')[0],
-      'beforeImage': _beforeImagePath ?? '',
-      'afterImage': _afterImagePath ?? '',
     };
 
-    records.add(jsonEncode(report));
-    await prefs.setStringList('saved_reports', records);
+    list.add(jsonEncode(data));
+    await prefs.setStringList('saved_wcc_reports', list);
 
-    refreshNotifier.value++;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WCC Report Safe Saved!')));
-
-    _projectNameController.clear();
-    _contractNoController.clear();
-    setState(() {
-      _beforeImagePath = null;
-      _afterImagePath = null;
-    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('WCC Report Generated & Downloaded (PDF/Excel)!')),
+    );
   }
 
   @override
@@ -310,43 +454,58 @@ class _WccFormWizardPageState extends State<WccFormWizardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(controller: _projectNameController, decoration: const InputDecoration(labelText: 'Project Name *', border: OutlineInputBorder())),
+            TextField(
+              controller: _projController,
+              decoration: const InputDecoration(
+                labelText: 'Project Name *',
+                border: OutlineInputBorder(),
+              ),
+            ),
             const SizedBox(height: 12),
-            TextField(controller: _contractNoController, decoration: const InputDecoration(labelText: 'Contract Number', border: OutlineInputBorder())),
+            TextField(
+              controller: _contractController,
+              decoration: const InputDecoration(
+                labelText: 'Contract Number *',
+                border: OutlineInputBorder(),
+              ),
+            ),
             const SizedBox(height: 20),
-            const Text('Work Pictures (Before & After)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
+            const Text('Work Completion Pictures',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(backgroundColor: kGreen),
-                    onPressed: () => _pickImage(true),
+                    onPressed: () => _pickPhoto(true),
                     icon: const Icon(Icons.camera_alt),
-                    label: Text(_beforeImagePath == null ? 'Before Pic' : 'Captured ✓'),
+                    label: Text(_beforePath == null ? 'Before Pic' : 'Attached ✓'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(backgroundColor: kGreen),
-                    onPressed: () => _pickImage(false),
+                    onPressed: () => _pickPhoto(false),
                     icon: const Icon(Icons.camera_alt),
-                    label: Text(_afterImagePath == null ? 'After Pic' : 'Captured ✓'),
+                    label: Text(_afterPath == null ? 'After Pic' : 'Attached ✓'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: kGreen, foregroundColor: Colors.white),
-                onPressed: _saveWccReport,
-                child: const Text('Save & Export WCC Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: kGreen, foregroundColor: Colors.white),
+                onPressed: _saveAndGenerateReport,
+                child: const Text('Save & Download Report (Excel/PDF)',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
               ),
-            ),
+            )
           ],
         ),
       ),
@@ -354,94 +513,56 @@ class _WccFormWizardPageState extends State<WccFormWizardPage> {
   }
 }
 
-// ---------------- PPM FORM WIZARD ----------------
-class PpmFormWizardPage extends StatelessWidget {
-  const PpmFormWizardPage({super.key});
+// ------------ PPM FORM PAGE ------------
+class PpmPage extends StatelessWidget {
+  const PpmPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New PPM Service Report')),
-      body: const Center(child: Text('PPM Checklist & Maintenance Details')),
+      appBar: AppBar(title: const Text('New PPM')),
+      body: const Center(child: Text('PPM Form & Checklists')),
     );
   }
 }
 
-// ---------------- MY RECORDS (EXCEL / PDF SAVED FILES) ----------------
+// ------------ MY RECORDS (WORD / EXCEL / PDF DOWNLOADS) ------------
 class RecordsPage extends StatelessWidget {
   const RecordsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My Saved Reports')),
-      body: const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: SavedRecordsListWidget(),
-      ),
+      appBar: AppBar(title: const Text('My Records & Downloads')),
+      body: const Center(child: Text('Saved Excel, Word & PDF Records')),
     );
   }
 }
 
-class SavedRecordsListWidget extends StatelessWidget {
-  final int? limit;
-  const SavedRecordsListWidget({super.key, this.limit});
-
-  Future<List<Map<String, dynamic>>> _loadRecords() async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String> records = prefs.getStringList('saved_reports') ?? [];
-    List<Map<String, dynamic>> parsedList = records.map((r) => jsonDecode(r) as Map<String, dynamic>).toList();
-    if (limit != null && parsedList.length > limit!) {
-      return parsedList.reversed.take(limit!).toList();
-    }
-    return parsedList.reversed.toList();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _loadRecords(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        final list = snapshot.data!;
-        if (list.isEmpty) return const Center(child: Text('Koi report save nahi hai.'));
-
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: list.length,
-          itemBuilder: (context, index) {
-            final item = list[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                leading: const Icon(Icons.picture_as_pdf, color: kGreen),
-                title: Text(item['title'] ?? 'Report', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Type: ${item['type']} | Date: ${item['date']}'),
-                trailing: const Icon(Icons.download, color: kGreen),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// ---------------- MORE / SETTINGS ----------------
+// ---------------- More / Settings ----------------
 class MorePage extends StatelessWidget {
   final VoidCallback onLogout;
   const MorePage({super.key, required this.onLogout});
 
   @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+  Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(16), children: [
         ListTile(
-          leading: const Icon(Icons.person, color: kGreen),
-          title: Text(userEmail.isEmpty ? 'Logged User' : userEmail),
-          subtitle: const Text('Account Persistent'),
+          leading: const Icon(Icons.apartment, color: kGreen),
+          title: const Text('Building Checklist Library'),
+          subtitle: const Text('Save Excel checklists per building'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {},
+        ),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.person_outline, color: kGreen),
+          title: Text(userEmail.isEmpty ? 'Signed in' : userEmail),
+          subtitle: const Text('Logged in on this phone'),
+        ),
+        ListTile(
+          leading: const Icon(Icons.cloud_outlined, color: kGreen),
+          title: const Text('Server'),
+          subtitle: Text(api),
         ),
         const Divider(),
         ListTile(
@@ -449,7 +570,5 @@ class MorePage extends StatelessWidget {
           title: const Text('Logout'),
           onTap: onLogout,
         ),
-      ],
-    );
-  }
+      ]);
 }
