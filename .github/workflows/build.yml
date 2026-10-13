@@ -1,155 +1,39 @@
-name: Build EIFM Flutter APK
+name: Flutter Android Build
 
 on:
-  workflow_dispatch:
   push:
-    branches: [main]
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v3
         with:
-          distribution: temurin
-          java-version: 17
+          distribution: 'zulu'
+          java-version: '17'
 
-      - uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.32.8
-          channel: stable
+          flutter-version: '3.19.x'
+          channel: 'stable'
 
-      - name: Prepare logo and clean pubspec
-        run: |
-          exec > >(tee -a /tmp/build.log) 2>&1
-          mkdir -p /tmp/src assets
-          cp main.dart pages.dart pubspec.yaml /tmp/src/ 2>/dev/null || true
-          cp app_icon.png logo.png EIFM_logo.jpg /tmp/src/ 2>/dev/null || true
-          if [ -f /tmp/src/app_icon.png ]; then
-            cp /tmp/src/app_icon.png assets/logo.png
-          elif [ -f /tmp/src/logo.png ]; then
-            cp /tmp/src/logo.png assets/logo.png
-          elif [ -f /tmp/src/EIFM_logo.jpg ]; then
-            cp /tmp/src/EIFM_logo.jpg assets/logo.png
-          else
-            echo 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC' | base64 -d > assets/logo.png
-          fi
-          python3 - <<'PY'
-          import re
-          s = open('pubspec.yaml').read().replace('\r\n', '\n')
-          s = re.sub(r'(?m)^([A-Z])(\w*):', lambda m: m.group(1).lower() + m.group(2) + ':', s)
-          m = re.search(r'(?m)^flutter:\s*$', s)
-          base = s[:m.start()] if m else s
-          base = base.rstrip('\n') + '\n\n'
-          base += 'flutter:\n  uses-material-design: true\n  assets:\n    - assets/logo.png\n'
-          open('pubspec.yaml', 'w').write(base)
-          PY
-          cp pubspec.yaml /tmp/pubspec_clean.yaml
-          echo "== clean pubspec =="; cat pubspec.yaml
-          ls -la assets
+      - name: Install Dependencies
+        run: flutter pub get
 
-      - name: Create project and arrange files
-        run: |
-          exec > >(tee -a /tmp/build.log) 2>&1
-          flutter create --platforms=android --project-name eifm_app .
-          rm -rf test
-          mkdir -p lib
-          cp /tmp/src/main.dart lib/main.dart 2>/dev/null || true
-          cp /tmp/src/pages.dart lib/pages.dart 2>/dev/null || true
-          cp /tmp/pubspec_clean.yaml pubspec.yaml
+      - name: Build APK
+        run: flutter build apk --release
 
-      - name: Fix manifest and photo settings
-        run: |
-          exec > >(tee -a /tmp/build.log) 2>&1
-          M=android/app/src/main/AndroidManifest.xml
-          sed -i 's/android:label="[^"]*"/android:label="EIFM"/' $M
-          sed -i 's#</application>#    <activity android:name="com.yalantis.ucrop.UCropActivity" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>\n    </application>#' $M
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"#' $M
-          sed -i 's#ImagePicker().pickImage(source: src)#ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 85)#' lib/pages.dart
-          sed -i 's#maxWidth: 900, maxHeight: 675,#maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,#' lib/pages.dart
-          cat $M
-
-      - name: Patch pages.dart to share real files
-        run: |
-          exec > >(tee -a /tmp/build.log) 2>&1
-          python3 - <<'PY'
-          p = 'lib/pages.dart'
-          s = open(p).read()
-          old = "shareFile(jsonDecode(r.body)['id'], 'package')"
-          new = "shareResult(jsonDecode(r.body)['id'])"
-          print('replacements:', s.count(old))
-          open(p, 'w').write(s.replace(old, new))
-          PY
-
-      - name: Get packages
-        run: |
-          exec > >(tee -a /tmp/build.log) 2>&1
-          flutter pub get
-
-      - name: Clean logo and app icon (optional - build continues if this fails)
-        continue-on-error: true
-        run: |
-          exec > >(tee -a /tmp/build.log) 2>&1
-          python3 -m pip install pillow
-          python3 - <<'PY'
-          from PIL import Image, ImageChops
-          import os
-          S = 1024
-          im = None
-          for c in ['app_icon.png', 'logo.png', 'EIFM_logo.jpg']:
-              p = '/tmp/src/' + c
-              if os.path.exists(p):
-                  try:
-                      t = Image.open(p)
-                      t.load()
-                      im = t.convert('RGBA')
-                      print('using logo file:', c)
-                      break
-                  except Exception as e:
-                      print('skipping broken image file:', c, e)
-          if im is None:
-              raise SystemExit('no valid logo image found')
-          flat = Image.alpha_composite(Image.new('RGBA', im.size, (255, 255, 255, 255)), im).convert('RGB')
-          diff = ImageChops.difference(flat, Image.new('RGB', flat.size, (255, 255, 255))).convert('L').point(lambda v: 255 if v > 25 else 0)
-          box = diff.getbbox()
-          if box:
-              flat = flat.crop(box)
-          def square(scale):
-              canvas = Image.new('RGB', (S, S), (255, 255, 255))
-              w, h = flat.size
-              k = (S * scale) / max(w, h)
-              r = flat.resize((max(1, int(w * k)), max(1, int(h * k))), Image.LANCZOS)
-              canvas.paste(r, ((S - r.width) // 2, (S - r.height) // 2))
-              return canvas
-          square(0.86).save('assets/logo.png')
-          square(0.92).save('icon_full.png')
-          square(0.60).save('icon_fg.png')
-          print('logo files written')
-          PY
-          flutter pub add --dev flutter_launcher_icons
-          printf 'flutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "icon_full.png"\n  adaptive_icon_background: "#FFFFFF"\n  adaptive_icon_foreground: "icon_fg.png"\n' > flutter_launcher_icons.yaml
-          dart run flutter_launcher_icons
-
-      - name: Build Android APK
-        run: |
-          exec > >(tee -a /tmp/build.log) 2>&1
-          flutter build apk --debug
-
-      - name: Show error summary
-        if: failure()
-        run: |
-          sleep 2
-          echo '### Build error - last lines' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -n 70 /tmp/build.log >> $GITHUB_STEP_SUMMARY || echo "no log (failure happened in setup steps)" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: eifm-app-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
