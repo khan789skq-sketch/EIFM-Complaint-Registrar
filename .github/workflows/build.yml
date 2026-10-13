@@ -27,7 +27,7 @@ jobs:
           channel: 'stable'
 
       - name: Re-create Android Platform Files
-        run: flutter create . --platforms=android
+        run: flutter create . --project-name=eifm_complaint_registrar --platforms=android
 
       - name: Install Dependencies
         run: flutter pub get
