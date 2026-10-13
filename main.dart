@@ -25,7 +25,7 @@ class EIFMApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'EIFM - Work Completion Certificate',
+      title: 'EIFM - Work Completion Certificate & PPM',
       theme: ThemeData(
         useMaterial3: true,
         primaryColor: kGreen,
@@ -33,7 +33,6 @@ class EIFMApp extends StatelessWidget {
           seedColor: kGreen,
           primary: kGreen,
           secondary: const Color(0xFF10B981),
-          background: const Color(0xFFF8FAFC),
         ),
         scaffoldBackgroundColor: const Color(0xFFF8FAFC),
         appBarTheme: const AppBarTheme(
@@ -230,12 +229,10 @@ class HomeDashboard extends StatelessWidget {
           mainAxisSpacing: 12,
           childAspectRatio: 1.3,
           children: [
-            card(Icons.note_add_outlined, 'New WCC', 'Create New Certificate', () => goTab(1)),
-            card(Icons.manage_search, 'My WCCs', 'View All Certificates', () => goTab(3)),
-            card(Icons.file_download_outlined, 'Export', 'Share Excel / Word files', () => goTab(3)),
+            card(Icons.note_add_outlined, 'New WCC', 'Create WCC Report', () => goTab(1)),
+            card(Icons.build_outlined, 'New PPM', 'PPM Service Report', () => goTab(2)),
+            card(Icons.description_outlined, 'My Records', 'View Saved Files', () => goTab(3)),
             card(Icons.settings_outlined, 'Settings', 'App Settings', () => goTab(4)),
-            card(Icons.build_outlined, 'New PPM', 'Create PPM Service Report', () => goTab(2)),
-            card(Icons.apartment, 'Library', 'Building Checklists', () => goTab(4)),
           ],
         ),
         const SizedBox(height: 20),
@@ -249,7 +246,7 @@ class HomeDashboard extends StatelessWidget {
   }
 }
 
-// ---------------- WCC FORM WIZARD WITH REAL BEFORE/AFTER PICTURES & PDF/EXCEL EXPORT ----------------
+// ---------------- WCC FORM PAGE ----------------
 class WccPage extends StatefulWidget {
   const WccPage({super.key});
 
@@ -260,8 +257,6 @@ class WccPage extends StatefulWidget {
 class _WccPageState extends State<WccPage> {
   final _projController = TextEditingController();
   final _contractController = TextEditingController();
-  final _employerController = TextEditingController();
-  final _contractorController = TextEditingController();
   
   File? _beforeImage;
   File? _afterImage;
@@ -281,12 +276,11 @@ class _WccPageState extends State<WccPage> {
   }
 
   Future<void> _generatePdfAndExcel() async {
-    if (_projController.text.isEmpty || _contractController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kripya Project Name aur Contract No. bharein')));
+    if (_projController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter Project Name')));
       return;
     }
 
-    // 1. Generate Real PDF Document
     final pdf = pw.Document();
     pw.MemoryImage? beforePwImg;
     pw.MemoryImage? afterPwImg;
@@ -311,8 +305,6 @@ class _WccPageState extends State<WccPage> {
               pw.SizedBox(height: 10),
               pw.Text('Project Name: ${_projController.text}', style: const pw.TextStyle(fontSize: 14)),
               pw.Text('Contract No: ${_contractController.text}', style: const pw.TextStyle(fontSize: 14)),
-              pw.Text('Employer: ${_employerController.text}', style: const pw.TextStyle(fontSize: 14)),
-              pw.Text('Contractor: ${_contractorController.text}', style: const pw.TextStyle(fontSize: 14)),
               pw.SizedBox(height: 20),
               pw.Text('Work Execution Photos:', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 10),
@@ -329,42 +321,31 @@ class _WccPageState extends State<WccPage> {
       ),
     );
 
-    // 2. Generate Real Excel Document
     var excel = ex.Excel.createExcel();
     ex.Sheet sheetObject = excel['WCC_Report'];
     excel.setDefaultSheet('WCC_Report');
-
-    sheetObject.appendRow([ex.TextCellValue('EIFM WORK COMPLETION CERTIFICATE')]);
     sheetObject.appendRow([ex.TextCellValue('Project Name'), ex.TextCellValue(_projController.text)]);
     sheetObject.appendRow([ex.TextCellValue('Contract No'), ex.TextCellValue(_contractController.text)]);
-    sheetObject.appendRow([ex.TextCellValue('Employer'), ex.TextCellValue(_employerController.text)]);
-    sheetObject.appendRow([ex.TextCellValue('Contractor'), ex.TextCellValue(_contractorController.text)]);
 
     final directory = await getApplicationDocumentsDirectory();
     final excelPath = "${directory.path}/WCC_${DateTime.now().millisecondsSinceEpoch}.xlsx";
     List<int>? fileBytes = excel.save();
     if (fileBytes != null) {
-      File(excelPath)
-        ..createSync(recursive: true)
-        ..writeAsBytesSync(fileBytes);
+      File(excelPath)..createSync(recursive: true)..writeAsBytesSync(fileBytes);
     }
 
-    // Save Record to Local SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     List<String> list = prefs.getStringList('saved_reports') ?? [];
     Map<String, dynamic> record = {
       'type': 'WCC',
       'project': _projController.text,
       'contract': _contractController.text,
-      'excelPath': excelPath,
       'date': DateTime.now().toString().split(' ')[0],
     };
     list.add(jsonEncode(record));
     await prefs.setStringList('saved_reports', list);
 
     refreshNotifier.value++;
-
-    // Open PDF Preview & Print
     await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
   }
 
@@ -379,11 +360,7 @@ class _WccPageState extends State<WccPage> {
           children: [
             TextField(controller: _projController, decoration: const InputDecoration(labelText: 'Project Name *', border: OutlineInputBorder())),
             const SizedBox(height: 12),
-            TextField(controller: _contractController, decoration: const InputDecoration(labelText: 'Contract Number *', border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            TextField(controller: _employerController, decoration: const InputDecoration(labelText: 'Employer', border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            TextField(controller: _contractorController, decoration: const InputDecoration(labelText: 'Contractor', border: OutlineInputBorder())),
+            TextField(controller: _contractController, decoration: const InputDecoration(labelText: 'Contract Number', border: OutlineInputBorder())),
             const SizedBox(height: 20),
             const Text('Work Completion Pictures', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
@@ -415,7 +392,7 @@ class _WccPageState extends State<WccPage> {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: kGreen, foregroundColor: Colors.white),
                 onPressed: _generatePdfAndExcel,
-                child: const Text('Save & Export PDF / Excel Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                child: const Text('Save & Export Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             )
           ],
@@ -426,26 +403,77 @@ class _WccPageState extends State<WccPage> {
 }
 
 // ---------------- PPM FORM PAGE ----------------
-class PpmPage extends StatelessWidget {
+class PpmPage extends StatefulWidget {
   const PpmPage({super.key});
+
+  @override
+  State<PpmPage> createState() => _PpmPageState();
+}
+
+class _PpmPageState extends State<PpmPage> {
+  final _clientController = TextEditingController();
+  final _locationController = TextEditingController();
+
+  Future<void> _savePpm() async {
+    if (_clientController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter Client Name')));
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    List<String> list = prefs.getStringList('saved_reports') ?? [];
+    Map<String, dynamic> record = {
+      'type': 'PPM',
+      'project': _clientController.text,
+      'contract': _locationController.text,
+      'date': DateTime.now().toString().split(' ')[0],
+    };
+    list.add(jsonEncode(record));
+    await prefs.setStringList('saved_reports', list);
+
+    refreshNotifier.value++;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PPM Report Saved Successfully!')));
+    _clientController.clear();
+    _locationController.clear();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('New PPM Service Report')),
-      body: const Center(child: Text('PPM Service Checklists & Maintenance Logs')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(controller: _clientController, decoration: const InputDecoration(labelText: 'Client Name *', border: OutlineInputBorder())),
+            const SizedBox(height: 12),
+            TextField(controller: _locationController, decoration: const InputDecoration(labelText: 'Location / Building', border: OutlineInputBorder())),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: kGreen, foregroundColor: Colors.white),
+                onPressed: _savePpm,
+                child: const Text('Save PPM Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-// ---------------- MY RECORDS (REAL LOCAL REPORT RETENTION) ----------------
+// ---------------- MY RECORDS PAGE ----------------
 class RecordsPage extends StatelessWidget {
   const RecordsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My Saved Reports & Exports')),
+      appBar: AppBar(title: const Text('My Saved Reports')),
       body: const Padding(
         padding: EdgeInsets.all(16.0),
         child: SavedReportsListWidget(),
@@ -486,10 +514,9 @@ class SavedReportsListWidget extends StatelessWidget {
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
               child: ListTile(
-                leading: const Icon(Icons.picture_as_pdf, color: kGreen),
-                title: Text(item['project'] ?? 'WCC Report', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Contract: ${item['contract']} | Date: ${item['date']}'),
-                trailing: const Icon(Icons.file_download_outlined, color: kGreen),
+                leading: Icon(item['type'] == 'WCC' ? Icons.note_add : Icons.build, color: kGreen),
+                title: Text(item['project'] ?? 'Report', style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('Type: ${item['type']} | Date: ${item['date']}'),
               ),
             );
           },
@@ -499,6 +526,27 @@ class SavedReportsListWidget extends StatelessWidget {
   }
 }
 
-// ---------------- MORE & SETTINGS PAGE ----------------
+// ---------------- MORE PAGE ----------------
 class MorePage extends StatelessWidget {
-  final Vo
+  final VoidCallback onLogout;
+  const MorePage({super.key, required this.onLogout});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        ListTile(
+          leading: const Icon(Icons.person_outline, color: kGreen),
+          title: Text(userEmail.isEmpty ? 'Signed in' : userEmail),
+          subtitle: const Text('Logged in user session'),
+        ),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.logout, color: Colors.red),
+          title: const Text('Logout'),
+          onTap: onLogout,
+        ),
+      ],
+    );
+  }
