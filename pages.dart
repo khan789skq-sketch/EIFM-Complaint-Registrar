@@ -230,11 +230,11 @@ class _WccState extends State<WccPage> {
         ListTile(leading: const Icon(Icons.photo_camera), title: const Text('Camera'), onTap: () => Navigator.pop(context, ImageSource.camera)),
         ListTile(leading: const Icon(Icons.photo_library), title: const Text('Gallery'), onTap: () => Navigator.pop(context, ImageSource.gallery))])));
       if (src == null) return;
-      final x = await ImagePicker().pickImage(source: src);
+      final x = await ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
       if (x == null) return;
       p = x.path; origs[k] = p;
     }
-    final cr = await ImageCropper().cropImage(sourcePath: p, aspectRatio: const CropAspectRatio(ratioX: 4, ratioY: 3), maxWidth: 900, maxHeight: 675,
+    final cr = await ImageCropper().cropImage(sourcePath: p, aspectRatio: const CropAspectRatio(ratioX: 4, ratioY: 3), maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,
         uiSettings: [AndroidUiSettings(toolbarTitle: 'Adjust ${k.toUpperCase()} picture', lockAspectRatio: true)]);
     if (cr != null) setState(() => pics[k] = File(cr.path));
   }
@@ -323,7 +323,4 @@ class RecordsPage extends StatelessWidget {
               Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
                 TextButton.icon(onPressed: () => shareFile(r['id'], 'package'), icon: const Icon(Icons.archive), label: const Text('Package')),
                 TextButton.icon(onPressed: () => shareFile(r['id'], 'file'), icon: const Icon(Icons.description), label: const Text('Main File')),
-                if (r['has_cl'] == 1) TextButton.icon(onPressed: () => shareFile(r['id'], 'checklist'), icon: const Icon(Icons.attach_file), label: const Text('Checklist')),
-              ])])]);
-      }));
-}
+                if (r['has_cl'] == 1) TextButton.icon(onPressed: () => shareFil
