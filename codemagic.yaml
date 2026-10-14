@@ -2,19 +2,21 @@ workflows:
   eifm-android:
     name: EIFM Android APK
     max_build_duration: 60
-    instance_type: linux
     environment:
       flutter: stable
     scripts:
       - name: Prepare Flutter Android project
         script: |
+          set -e
           flutter create --platforms=android --project-name eifm_wcc_ppm .
           mkdir -p lib
           cp main.dart lib/main.dart
           cp pages.dart lib/pages.dart
+          test -d android
       - name: Install dependencies
         script: flutter pub get
       - name: Build APK
-        script: flutter build apk --debug
+        script: flutter build apk --release
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
+      
