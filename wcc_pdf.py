@@ -72,11 +72,24 @@ def make_wcc_pdf(data, before, after, out):
         c.drawString(55,y+260,title)
         c.rect(55,y, w-110,250,stroke=1,fill=0)
         _image(c,img,60,y+5,w-120,240)
-    c.setFont('Helvetica',8)
-    c.drawCentredString(w/2,49,'P.O Box 2286, Abu Dhabi – United Arab Emirates - Tel: +971-2-6436663, Fax: +971-2-6436660')
-    c.drawCentredString(w/2,37,'E-mail: eifm@eifm.ae     Website: www.eifm.ae')
-    c.drawString(38,18,'Page 2 of 2');c.drawCentredString(w/2,18,'EIFMEN08');c.drawRightString(w-38,18,'Version R3')
+    # Copy the *actual* original footer (fonts, colors, hyphens, spacing and numbers)
+    # as PDF vectors rather than retyping any of the address or contact details.
     c.save();buf.seek(0);outpdf.add_page(PdfReader(buf).pages[0])
     out=Path(out);out.parent.mkdir(parents=True,exist_ok=True)
-    with out.open('wb') as f:outpdf.write(f)
+    temp=BytesIO();outpdf.write(temp);temp.seek(0)
+    with fitz.open(stream=temp.getvalue(), filetype='pdf') as result:
+        original_page=src[0]
+        footer=fitz.Rect(0, 765, w, 815)
+        result[1].show_pdf_page(footer, src, 0, clip=footer, overlay=True)
+        # Copy code and version from the source footer without its old page counter.
+        lower=fitz.Rect(125, 815, w, h)
+        result[1].show_pdf_page(lower, src, 0, clip=lower, overlay=True)
+        # Only change page counters; leave all other original footer elements intact.
+        for index, current in [(0, 'Page 1 of 2'), (1, 'Page 2 of 2')]:
+            target=result[index]
+            rect=fitz.Rect(37, 816, 112, 835)
+            target.draw_rect(rect, color=None, fill=(1,1,1), overlay=True)
+            target.insert_text((40.56, 827.2), current, fontsize=9.96, fontname='hebo', color=(0,0,0), overlay=True)
+        result.save(str(out), garbage=3, deflate=True)
+    src.close()
     return out
