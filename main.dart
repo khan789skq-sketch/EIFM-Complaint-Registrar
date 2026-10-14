@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'pages.dart';
 
 const kGreen = Color(0xFF0B5D3F);
-String api = 'https://eifm-backend.onrender.com';
+String api = 'https://eifm-wcc-api.onrender.com';
 String? token;
 final refresh = ValueNotifier<int>(0);
 Map<String, String> get h => {'Authorization': 'Bearer ${token ?? ''}'};
@@ -21,7 +21,8 @@ class _AppRootState extends State<AppRoot> {
   @override void initState() { super.initState(); restore(); }
   Future<void> restore() async {
     final p = await SharedPreferences.getInstance();
-    api = p.getString('server_url') ?? api;
+    api = 'https://eifm-wcc-api.onrender.com';
+    await p.setString('server_url', api);
     token = p.getString('token');
     if (mounted) setState(() => loading = false);
   }
@@ -40,8 +41,12 @@ class _LoginPageState extends State<LoginPage> {
     if (busy) return;
     setState(() => busy = true);
     try {
-      final r = await http.post(Uri.parse('$api/${signup ? 'signup' : 'login'}'), headers: {'Content-Type':'application/json'}, body: jsonEncode({'email': email.text.trim(), 'password': password.text})).timeout(const Duration(seconds: 35));
-      if (r.statusCode != 200) throw Exception(r.body);
+      final r = await http.post(Uri.parse('$api/${signup ? 'signup' : 'login'}'), headers: {'Content-Type':'application/json'}, body: jsonEncode({'email': email.text.trim(), 'password': password.text})).timeout(const Duration(seconds: 90));
+      if (r.statusCode < 200 || r.statusCode >= 300) {
+        String detail = 'Request failed (${r.statusCode})';
+        try { final body = jsonDecode(r.body); detail = (body is Map ? (body['detail'] ?? body['message']) : null)?.toString() ?? detail; } catch (_) {}
+        throw Exception(detail);
+      }
       final t = jsonDecode(r.body)['token'] as String;
       final p = await SharedPreferences.getInstance(); await p.setString('token', t); token = t;
       widget.onDone();
