@@ -2,20 +2,57 @@ workflows:
   eifm-android:
     name: EIFM Android APK
     max_build_duration: 60
+    instance_type: linux
     environment:
       flutter: stable
     scripts:
-      - name: Prepare Flutter Android project
+      - name: Prepare Android project
         script: |
-          set -e
-          flutter create --platforms=android --project-name eifm_wcc_ppm .
+          set -eu
+          test -f pubspec.yaml || { echo 'ERROR: pubspec.yaml missing in repository root'; exit 1; }
+          if [ ! -d android ]; then
+            flutter create --platforms=android --project-name eifm_wcc_ppm .
+          fi
           mkdir -p lib
-          cp main.dart lib/main.dart
-          cp pages.dart lib/pages.dart
-          test -d android
-      - name: Install dependencies
+          if [ -f main.dart ]; then cp main.dart lib/main.dart; fi
+          if [ -f pages.dart ]; then cp pages.dart lib/pages.dart; fi
+          test -f lib/main.dart
+          test -f lib/pages.dart
+      - name: Install Flutter dependencies
         script: flutter pub get
-      - name: Build APK
+      - name: Set Android compile SDK to 36
+        script: |
+          set -eu
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+
+          root = Path('android/app')
+          for filename in ('build.gradle.kts', 'build.gradle'):
+              p = root / filename
+              if not p.exists():
+                  continue
+              content = p.read_text()
+              content = re.sub(r'(?m)^(\s*)compileSdk\s*=\s*(?:flutter\.compileSdkVersion|\d+)', r'\g<1>compileSdk = 36', content)
+              content = re.sub(r'(?m)^(\s*)compileSdkVersion\s+(?:flutter\.compileSdkVersion|\d+)', r'\g<1>compileSdkVersion 36', content)
+              p.write_text(content)
+              print('Updated app compileSdk:', p)
+
+          cache = Path(os.environ.get('PUB_CACHE', str(Path.home() / '.pub-cache')))
+          candidates = list((cache / 'hosted').glob('*/file_picker-*/android/build.gradle'))
+          candidates += list((cache / 'hosted').glob('*/file_picker-*/android/build.gradle.kts'))
+          if not candidates:
+              raise SystemExit('ERROR: file_picker Android Gradle file not found in Pub cache')
+          for p in candidates:
+              content = p.read_text()
+              content, n1 = re.subn(r'(?m)^(\s*)compileSdkVersion\s*(?:\(?\s*)?(?:\d+|flutter\.compileSdkVersion)\s*\)?', r'\g<1>compileSdkVersion 36', content)
+              content, n2 = re.subn(r'(?m)^(\s*)compileSdk\s*=\s*(?:\d+|flutter\.compileSdkVersion)', r'\g<1>compileSdk = 36', content)
+              if not (n1 or n2):
+                  raise SystemExit('ERROR: could not locate file_picker compileSdk setting: ' + str(p))
+              p.write_text(content)
+              print('Updated file_picker compileSdk:', p)
+          PY
+      - name: Build release APK
         script: flutter build apk --release
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
