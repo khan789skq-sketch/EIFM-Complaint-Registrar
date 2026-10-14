@@ -4,11 +4,12 @@ workflows:
     max_build_duration: 60
     environment:
       flutter: stable
+
     scripts:
       - name: Prepare Android project
         script: |
           set -eu
-          test -f pubspec.yaml || { echo 'ERROR: pubspec.yaml missing in repository root'; exit 1; }
+          test -f pubspec.yaml
           if [ ! -d android ]; then
             flutter create --platforms=android --project-name eifm_wcc_ppm .
           fi
@@ -17,9 +18,11 @@ workflows:
           if [ -f pages.dart ]; then cp pages.dart lib/pages.dart; fi
           test -f lib/main.dart
           test -f lib/pages.dart
-      - name: Install Flutter dependencies
+
+      - name: Install dependencies
         script: flutter pub get
-      - name: Set Android compile SDK to 36
+
+      - name: Configure Android
         script: |
           set -eu
           python3 - <<'PY'
@@ -27,34 +30,76 @@ workflows:
           from pathlib import Path
 
           app = Path('android/app')
-          app_gradle = app / 'build.gradle'
-          app_kts = app / 'build.gradle.kts'
-          if app_kts.is_file():
-              p = app_kts
+          gradle = app / 'build.gradle'
+          kts = app / 'build.gradle.kts'
+
+          if kts.exists():
+              p = kts
               override = '\nandroid { compileSdk = 36 }\n'
-          elif app_gradle.is_file():
-              p = app_gradle
+          elif gradle.exists():
+              p = gradle
               override = '\nandroid { compileSdkVersion 36 }\n'
           else:
-              raise SystemExit('ERROR: Android app Gradle file missing')
-          p.write_text(p.read_text() + override)
-          print('Set Android app compileSdk to 36:', p)
+              raise SystemExit('Android Gradle file missing')
 
-          cache = Path(os.environ.get('PUB_CACHE', str(Path.home() / '.pub-cache')))
-          candidates = sorted((cache / 'hosted').glob('*/file_picker-*/android/build.gradle'))
-          candidates += sorted((cache / 'hosted').glob('*/file_picker-*/android/build.gradle.kts'))
-          if not candidates:
-              raise SystemExit('ERROR: file_picker Gradle file missing in Pub cache')
-          for p in candidates:
+          p.write_text(p.read_text() + override)
+
+          cache = Path(
+              os.environ.get(
+                  'PUB_CACHE',
+                  str(Path.home() / '.pub-cache')
+              )
+          )
+
+          files = list(
+              (cache / 'hosted').glob(
+                  '*/file_picker-*/android/build.gradle'
+              )
+          )
+          files += list(
+              (cache / 'hosted').glob(
+                  '*/file_picker-*/android/build.gradle.kts'
+              )
+          )
+
+          for p in files:
               if p.suffix == '.kts':
                   override = '\nandroid { compileSdk = 36 }\n'
               else:
                   override = '\nandroid { compileSdkVersion 36 }\n'
               p.write_text(p.read_text() + override)
-              print('Set file_picker compileSdk to 36:', p)
+
+          manifest = Path(
+              'android/app/src/main/AndroidManifest.xml'
+          )
+          s = manifest.read_text()
+
+          permission = (
+              '<uses-permission '
+              'android:name="android.permission.INTERNET" />'
+          )
+
+          if permission not in s:
+              pos = s.find('>')
+              if pos == -1:
+                  raise SystemExit('Invalid AndroidManifest.xml')
+              s = s[:pos+1] + '\n    ' + permission + s[pos+1:]
+
+          import re
+          s = re.sub(
+              r'android:label="[^"]*"',
+              'android:label="EIFM WCC &amp; PPM"',
+              s,
+              count=1
+          )
+
+          manifest.write_text(s)
+          print('Android configuration completed')
           PY
+
       - name: Build release APK
         script: flutter build apk --release
+
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
-
+      
