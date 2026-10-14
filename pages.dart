@@ -242,9 +242,24 @@ class _WccState extends State<WccPage> {
       if (x == null) return;
       p = x.path; origs[k] = p;
     }
-    final cr = await ImageCropper().cropImage(sourcePath: p, aspectRatio: const CropAspectRatio(ratioX: 4, ratioY: 3), maxWidth: 900, maxHeight: 675, compressFormat: ImageCompressFormat.jpg, compressQuality: 85,
-        uiSettings: [AndroidUiSettings(toolbarTitle: 'Adjust ${k.toUpperCase()} picture', lockAspectRatio: true)]);
-    if (cr != null) setState(() => pics[k] = File(cr.path));
+    // Immediately keep a usable image, even if native crop screen fails or is cancelled.
+    if (mounted) setState(() => pics[k] = File(p!));
+    try {
+      final cr = await ImageCropper().cropImage(
+        sourcePath: p,
+        aspectRatio: const CropAspectRatio(ratioX: 4, ratioY: 3),
+        maxWidth: 900, maxHeight: 675,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 82,
+        uiSettings: [AndroidUiSettings(
+          toolbarTitle: 'Adjust ${k.toUpperCase()} picture',
+          lockAspectRatio: false,
+        )],
+      );
+      if (cr != null && mounted) setState(() => pics[k] = File(cr.path));
+    } catch (e) {
+      if (mounted) msg(context, 'Photo selected. Crop unavailable: $e');
+    }
   }
 
   Widget tile(String k, String t) => Expanded(child: Column(children: [

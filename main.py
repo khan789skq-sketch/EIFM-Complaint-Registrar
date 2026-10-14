@@ -6,6 +6,7 @@ from fastapi import FastAPI, Depends, Header, HTTPException, UploadFile, File, F
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from wcc_pdf import make_wcc_pdf
 from generate_sheet import (EQUIPMENT_SHEETS, create_wcc_from_template, create_ppm_package,
                             read_template_tasks, copy_selected_equipment_workbook)
 
@@ -130,6 +131,11 @@ async def wcc(data: str = Form(...), before: UploadFile = File(None), after: Upl
         raise HTTPException(500, f'WCC error: {e}')
 
     ppm = d.get('mode') == 'PPM WCC'; cl = folder / 'Checklist.xlsx'
+    if not ppm:
+        try:
+            out = make_wcc_pdf(d, before_p, after_p, folder / 'WCC.pdf')
+        except Exception as e:
+            raise HTTPException(500, f'WCC PDF error: {e}')
     if ppm: copy_selected_equipment_workbook(selected, cl)
     zipit(folder, package)
     with db() as c:

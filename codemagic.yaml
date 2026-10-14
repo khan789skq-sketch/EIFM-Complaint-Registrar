@@ -6,15 +6,15 @@ workflows:
     environment:
       flutter: stable
     scripts:
-      - name: Prepare Flutter project
+      - name: Prepare Flutter Android project
         script: |
           flutter create --platforms=android --project-name eifm_wcc_ppm .
           mkdir -p lib
           cp main.dart lib/main.dart
           cp pages.dart lib/pages.dart
-      - name: Dependencies
+      - name: Install dependencies
         script: flutter pub get
-      - name: Build debug APK
+      - name: Build APK
         script: flutter build apk --debug
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
