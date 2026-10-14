@@ -1,38 +1,20 @@
-
 workflows:
   eifm-android:
     name: EIFM Android APK
-    max_build_duration: 30
+    max_build_duration: 60
     instance_type: linux
-
     environment:
       flutter: stable
-
     scripts:
       - name: Prepare Flutter project
         script: |
-          if [ ! -d "android" ]; then
-            flutter create --platforms=android --project-name eifm_wcc_ppm .
-          fi
-
+          flutter create --platforms=android --project-name eifm_wcc_ppm .
           mkdir -p lib
-
-          if [ -f "main.dart" ]; then
-            cp main.dart lib/main.dart
-          fi
-
-          if [ -f "pages.dart" ]; then
-            cp pages.dart lib/pages.dart
-          fi
-
-      - name: Get dependencies
-        script: |
-          flutter pub get
-
-      - name: Build Android APK
-        script: |
-          flutter build apk --debug
-
+          cp main.dart lib/main.dart
+          cp pages.dart lib/pages.dart
+      - name: Dependencies
+        script: flutter pub get
+      - name: Build debug APK
+        script: flutter build apk --debug
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
-      

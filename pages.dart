@@ -12,11 +12,13 @@ import 'main.dart';
 
 Future<dynamic> get(String p) async {
   final r = await http.get(Uri.parse('$api/$p'), headers: h);
-  return r.statusCode == 200 ? jsonDecode(r.body) : [];
+  if (r.statusCode != 200) throw Exception('HTTP ${r.statusCode}: ${r.body}');
+  return jsonDecode(r.body);
 }
 
 Future<void> shareFile(int id, String field) async {
   final r = await http.get(Uri.parse('$api/records/$id/$field'), headers: h);
+  if (r.statusCode != 200) throw Exception('Download failed: ${r.statusCode}');
   final cd = r.headers['content-disposition'] ?? '';
   final n = RegExp(r'filename="?([^";]+)').firstMatch(cd)?.group(1) ?? 'EIFM_$id';
   final f = File('${(await getTemporaryDirectory()).path}/$n')..writeAsBytesSync(r.bodyBytes);
@@ -48,6 +50,7 @@ const ppmNos = ['1st PPM', '2nd PPM', '3rd PPM', '4th PPM'];
 
 // ---------- equipment select + checklist editor (OK / Not OK / Remarks / Follow-up) ----------
 final taskFut = <String, Future<dynamic>>{};
+late Future<dynamic> equipmentFuture = get('equipment');
 
 class EqSelect extends StatefulWidget {
   final List<String> sel; final VoidCallback changed;
@@ -55,14 +58,16 @@ class EqSelect extends StatefulWidget {
   @override State<EqSelect> createState() => _EqSelectState();
 }
 class _EqSelectState extends State<EqSelect> {
-  late final Future<dynamic> fut = get('equipment');
+  Future<dynamic> get fut => equipmentFuture;
   @override
   Widget build(BuildContext c) => FutureBuilder(future: fut, builder: (_, s) {
+        if (s.hasError) return Column(children: [Text('Equipment load failed: ${s.error}'), TextButton(onPressed: () => setState(() => equipmentFuture = get('equipment')), child: const Text('Retry'))]);
         if (!s.hasData) return const LinearProgressIndicator();
+        if ((s.data as List).isEmpty) return const Text('No equipment available. Check backend templates.');
         return Wrap(spacing: 6, children: [
           for (final e in (s.data as List).cast<String>())
             FilterChip(label: Text(e), selected: widget.sel.contains(e), onSelected: (v) {
-              v ? widget.sel.add(e) : widget.sel.remove(e); widget.changed();
+              setState(() { v ? widget.sel.add(e) : widget.sel.remove(e); }); widget.changed();
             })
         ]);
       });
@@ -79,8 +84,8 @@ class _EEState extends State<EquipEditor> {
     return Card(child: Padding(padding: const EdgeInsets.all(8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('$n. $t'),
       Row(children: [
-        Checkbox(value: m['ok'], onChanged: (v) => setState(() => m['ok'] = v)), const Text('OK'),
-        Checkbox(value: m['no'], onChanged: (v) => setState(() => m['no'] = v)), const Text('Not OK')]),
+        Checkbox(value: m['ok'], onChanged: (v) => setState(() { m['ok'] = v; if (v == true) m['no'] = false; })), const Text('OK'),
+        Checkbox(value: m['no'], onChanged: (v) => setState(() { m['no'] = v; if (v == true) m['ok'] = false; })), const Text('Not OK')]),
       TextFormField(initialValue: m['rem'], decoration: const InputDecoration(labelText: 'Remarks'), onChanged: (v) => m['rem'] = v),
       TextFormField(initialValue: m['fol'], decoration: const InputDecoration(labelText: 'Follow-up WO'), onChanged: (v) => m['fol'] = v),
     ])));
@@ -91,6 +96,7 @@ class _EEState extends State<EquipEditor> {
         for (final eq in widget.sel)
           ExpansionTile(initiallyExpanded: true, title: Text('📋 $eq — checklist details'), children: [
             FutureBuilder(future: taskFut.putIfAbsent(eq, () => get('tasks?equipment=${Uri.encodeComponent(eq)}')), builder: (_, s) {
+              if (s.hasError) return Text('Checklist loading failed: ${s.error}');
               if (!s.hasData) return const LinearProgressIndicator();
               final t = (s.data as List).cast<String>();
               if (t.isEmpty) return Text('No checklist rows found for $eq.');
@@ -150,7 +156,8 @@ class _LibState extends State<LibraryPage> {
           final q = http.MultipartRequest('POST', Uri.parse('$api/checklists'))..headers.addAll(h);
           q.fields['building'] = f('building').text;
           q.files.add(await http.MultipartFile.fromPath('file', path!));
-          await q.send();
+          final response = await q.send();
+          if (response.statusCode != 200) { if (c.mounted) msg(c, 'Checklist upload failed: ${response.statusCode}'); return; }
           if (c.mounted) { msg(c, 'Saved checklist for ${f('building').text}.'); setState(() => path = null); }
         }, child: const Text('Save Building Checklist')),
       ]));
@@ -162,6 +169,7 @@ class PpmPage extends StatefulWidget {
   @override State<PpmPage> createState() => _PpmState();
 }
 class _PpmState extends State<PpmPage> {
+  late final Future<dynamic> checklistFuture = get('checklists');
   final f = F(); final sel = <String>[]; final store = <String, Map<String, dynamic>>{};
   String freq = 'Monthly', ppmNo = '1st PPM', month = months[DateTime.now().month - 1], cl = 'Use original All-3.xlsx';
   bool busy = false;
@@ -172,13 +180,13 @@ class _PpmState extends State<PpmPage> {
     try {
       final r = await http.post(Uri.parse('$api/ppm'), headers: {...h, 'Content-Type': 'application/json'},
           body: jsonEncode({...f.vals, 'frequency': freq, 'ppm_number': ppmNo, 'month': month, 'checklist': cl, 'equipment': sel, 'items': items(store)}));
-      if (r.statusCode == 200) { refresh.value++; await shareFile(jsonDecode(r.body)['id'], 'package'); } else if (mounted) { msg(context, 'Error: ${r.body}'); }
+      if (r.statusCode == 200) { refresh.value++; if (mounted) msg(context, 'Saved successfully in My Records'); await shareFile(jsonDecode(r.body)['id'], 'package'); } else if (mounted) { msg(context, 'Error: ${r.body}'); }
     } catch (e) { if (mounted) msg(context, 'Error: $e'); }
     if (mounted) setState(() => busy = false);
   }
 
   @override
-  Widget build(BuildContext c) => FutureBuilder(future: get('checklists'), builder: (_, s) => ListView(padding: const EdgeInsets.all(16), children: [
+  Widget build(BuildContext c) => FutureBuilder(future: checklistFuture, builder: (_, s) => ListView(padding: const EdgeInsets.all(16), children: [
         const Text('🛠️ New PPM', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
         tf(f, 'project', 'Building / Project Name'), tf(f, 'location', 'Location'), tf(f, 'unit', 'Unit Number'),
@@ -193,7 +201,7 @@ class _PpmState extends State<PpmPage> {
         EqSelect(sel, () => setState(() {})),
         if (sel.isEmpty) const Text('Select one or more equipment.') else EquipEditor(sel, store),
         const SizedBox(height: 10),
-        tf(f, 'technician', 'Technician Name / Sign'), tf(f, 'engineer', 'Engineer / Supervisor Name / Sign'), tf(f, 'summary', 'REPORT SUMMARY', lines: 3),
+        tf(f, 'technician', 'Technician Name / Sign'), tf(f, 'engineer', 'Engineer / Supervisor Name / Sign'), tf(f, 'summary', 'REPORT SUMMARY OF MAINTENANCE', lines: 3),
         FilledButton(onPressed: busy ? null : gen, child: Text(busy ? 'Please wait...' : 'Generate PPM')),
         const SizedBox(height: 30),
       ]));
@@ -265,7 +273,7 @@ class _WccState extends State<WccPage> {
         if (e.value.isNotEmpty) q.files.add(http.MultipartFile.fromBytes(e.key, (await e.value.toPngBytes())!, filename: '${e.key}.png'));
       }
       final r = await http.Response.fromStream(await q.send());
-      if (r.statusCode == 200) { refresh.value++; await shareFile(jsonDecode(r.body)['id'], 'package'); } else if (mounted) { msg(context, 'Error: ${r.body}'); }
+      if (r.statusCode == 200) { refresh.value++; if (mounted) msg(context, 'Saved successfully in My Records'); await shareFile(jsonDecode(r.body)['id'], 'package'); } else if (mounted) { msg(context, 'Error: ${r.body}'); }
     } catch (e) { if (mounted) msg(context, 'Error: $e'); }
     if (mounted) setState(() => busy = false);
   }
@@ -309,18 +317,28 @@ class _WccState extends State<WccPage> {
 }
 
 // ---------- My Records ----------
-class RecordsPage extends StatelessWidget {
+class RecordsPage extends StatefulWidget {
   const RecordsPage({super.key});
-  @override
-  Widget build(BuildContext c) => ValueListenableBuilder<int>(valueListenable: refresh, builder: (_, __, ___) => FutureBuilder(future: get('records'), builder: (_, s) {
-        if (!s.hasData) return const Center(child: CircularProgressIndicator());
-        final l = s.data as List;
-        if (l.isEmpty) return const Center(child: Text('No records yet.'));
-        return ListView(children: [for (final r in l) ExpansionTile(
-            title: Text('${r['kind']} | ${r['project'] ?? '-'}'), subtitle: Text('${r['number'] ?? '-'} | ${r['created_at']}'),
-            children: [
-              Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(left: 16), child: Text('Equipment: ${r['equipment'] ?? '-'}'))),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                TextButton.icon(onPressed: () => shareFile(r['id'], 'package'), icon: const Icon(Icons.archive), label: const Text('Package')),
-                TextButton.icon(onPressed: () => shareFile(r['id'], 'file'), icon: const Icon(Icons.description), label: const Text('Main File')),
-                if (r['has_cl'] == 1) TextButton.icon(onPressed: () => shareFil
+  @override State<RecordsPage> createState() => _RecordsState();
+}
+class _RecordsState extends State<RecordsPage> {
+  late Future<dynamic> records;
+  @override void initState() { super.initState(); records = get('records'); refresh.addListener(reload); }
+  void reload() { if (mounted) setState(() => records = get('records')); }
+  @override void dispose() { refresh.removeListener(reload); super.dispose(); }
+  @override Widget build(BuildContext c) => FutureBuilder<dynamic>(future: records, builder: (_, s) {
+    if (s.hasError) return Center(child: Text('Could not load records: ${s.error}'));
+    if (!s.hasData) return const Center(child: CircularProgressIndicator());
+    final l = (s.data as List);
+    if (l.isEmpty) return const Center(child: Text('No records yet.'));
+    return RefreshIndicator(onRefresh: () async { reload(); await records; }, child: ListView(children: [for (final r in l)
+      ExpansionTile(title: Text('${r['kind']} | ${r['project'] ?? '-'}'), subtitle: Text('${r['number'] ?? '-'} | ${r['created_at']}'), children: [
+        Padding(padding: const EdgeInsets.all(12), child: Text('Equipment: ${r['equipment'] ?? '-'}')),
+        Wrap(alignment: WrapAlignment.center, children: [
+          TextButton.icon(onPressed: () => shareFile(r['id'], 'package'), icon: const Icon(Icons.archive), label: const Text('Package')),
+          TextButton.icon(onPressed: () => shareFile(r['id'], 'file'), icon: const Icon(Icons.description), label: const Text('Main File')),
+          if (r['has_cl'] == 1) TextButton.icon(onPressed: () => shareFile(r['id'], 'checklist'), icon: const Icon(Icons.picture_as_pdf), label: const Text('Checklist')),
+        ])
+      ])]));
+  });
+}
