@@ -65,28 +65,21 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Fix file_picker Android compile SDK
+      - name: Force file_picker compile SDK 36
         shell: bash
         run: |
           set -euo pipefail
-          # file_picker 8.x uses Android API 34; its transitive Android
-          # lifecycle dependency now requires Android API 36.
           python3 - <<'PYCODE'
           import os
           from pathlib import Path
           cache = Path(os.environ.get('PUB_CACHE', str(Path.home() / '.pub-cache')))
-          packages = sorted((cache / 'hosted' / 'pub.dev').glob('file_picker-*/android/build.gradle*'))
-          if not packages:
-              raise SystemExit('file_picker Android Gradle configuration not found')
-          import re
-          for path in packages:
-              src = path.read_text()
-              updated = re.sub(r'(?m)^(\s*)compileSdk\s*=\s*(?:[0-9]+|flutter\.compileSdkVersion)', r'\g<1>compileSdk = 36', src)
-              updated = re.sub(r'(?m)^(\s*)compileSdkVersion\s*(?:\(?[0-9]+\)?|flutter\.compileSdkVersion)', r'\g<1>compileSdkVersion 36', updated)
-              if updated == src:
-                  raise SystemExit(f'Could not locate compileSdk setting in {path}')
-              path.write_text(updated)
-              print(f'Patched {path} to Android compileSdk 36')
+          paths = sorted((cache / 'hosted' / 'pub.dev').glob('file_picker-*/android/build.gradle'))
+          if not paths:
+              raise SystemExit('file_picker build.gradle not found')
+          for path in paths:
+              with path.open('a') as f:
+                  f.write('\n// EIFM: override Android API level required by lifecycle dependency\nandroid { compileSdkVersion 36 }\n')
+              print('Set compileSdkVersion 36 in', path)
           PYCODE
 
       - name: Build Android debug APK and save error log
