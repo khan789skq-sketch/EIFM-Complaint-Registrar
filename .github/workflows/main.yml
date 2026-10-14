@@ -2,8 +2,7 @@ name: EIFM Android APK Build
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -13,7 +12,7 @@ jobs:
   build:
     name: Build Android APK
     runs-on: ubuntu-latest
-
+    timeout-minutes: 35
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,39 +29,58 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Prepare Flutter Android project
+      - name: Prepare Android Flutter project
         shell: bash
         run: |
+          set -e
           if [ ! -d android ]; then
             flutter create --platforms=android --project-name eifm_wcc_ppm .
           fi
           mkdir -p lib
           if [ -f main.dart ]; then cp main.dart lib/main.dart; fi
           if [ -f pages.dart ]; then cp pages.dart lib/pages.dart; fi
-
-      - name: Install dependencies
-        run: flutter pub get
+          test -f lib/main.dart || { echo 'Missing lib/main.dart'; exit 1; }
 
       - name: Install Android SDK 36
         shell: bash
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36'
+          set -e
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
 
-      - name: Set compileSdk 36
+      - name: Configure Android SDK
         shell: bash
         run: |
+          set -e
           if [ -f android/app/build.gradle.kts ]; then
             sed -i -E 's/compileSdk[[:space:]]*=[[:space:]]*flutter\.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
+            sed -i -E 's/compileSdk[[:space:]]*=[[:space:]]*[0-9]+/compileSdk = 36/' android/app/build.gradle.kts
           fi
           if [ -f android/app/build.gradle ]; then
             sed -i -E 's/compileSdkVersion[[:space:]]+flutter\.compileSdkVersion/compileSdkVersion 36/' android/app/build.gradle
+            sed -i -E 's/compileSdkVersion[[:space:]]+[0-9]+/compileSdkVersion 36/' android/app/build.gradle
           fi
+          grep -n -E 'compileSdk|targetSdk|minSdk' android/app/build.gradle* || true
 
-      - name: Build debug APK
-        run: flutter build apk --debug
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Android debug APK and save error log
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build apk --debug --verbose 2>&1 | tee android-build.log
+
+      - name: Upload build log for troubleshooting
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EIFM-Android-Build-Log
+          path: android-build.log
+          if-no-files-found: ignore
 
       - name: Upload Android APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: EIFM-WCC-PPM-Android-APK
