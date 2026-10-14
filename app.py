@@ -9,7 +9,7 @@ from streamlit_drawable_canvas import st_canvas
 
 from generate_sheet import (
     EQUIPMENT_SHEETS, create_ppm_package, create_wcc_from_template,
-    read_template_tasks, copy_selected_equipment_workbook, EXCEL_1, EXCEL_3,
+    read_template_tasks, copy_selected_equipment_workbook, EXCEL_1, EXCEL_3, export_pdf, combine_pdfs,
 )
 
 BASE_DIR=Path(__file__).resolve().parent
@@ -171,8 +171,10 @@ elif page=='New PPM':
             try:
                 create_ppm_package(selected,project,location,unit,frequency,category,fiscal_year,wo,ppm_number,month,service_date.strftime('%d/%m/%Y'),start.strftime('%H:%M'),finish.strftime('%H:%M'),task_data,statuses,remarks,followups,technician,engineer,summary,main)
                 copy_selected_equipment_workbook(selected,checklist)
-                make_zip(folder,package);add_record('PPM',project,', '.join(selected),ppm_number,main,checklist,package)
-                st.success('PPM generated. One checklist Excel contains all selected equipment sheets.')
+                main_pdf=export_pdf(main,folder/'PPM.pdf'); checklist_pdf=export_pdf(checklist,folder/'Checklist.pdf'); main.unlink(); checklist.unlink(); make_zip(folder,package);add_record('PPM',project,', '.join(selected),ppm_number,main_pdf,checklist_pdf,package)
+                st.success('PPM PDF generated with all selected equipment sheets.')
+                st.download_button('📄 Save / Share PPM PDF',main_pdf.read_bytes(),main_pdf.name,'application/pdf')
+                st.download_button('📄 Save / Share Checklist PDF',checklist_pdf.read_bytes(),checklist_pdf.name,'application/pdf')
                 st.download_button('📦 Download PPM Package',package.read_bytes(),package.name,'application/zip')
             except Exception as e:st.exception(e)
 
@@ -193,11 +195,11 @@ elif page=='New WCC':
         ppm_year=st.number_input('PPM Service Year',2000,2100,date.today().year) if mode=='PPM WCC' else None
     if selected:
         task_data,statuses,remarks,followups=equipment_editor(selected,'wcc')
-        if not details.strip():
+        if not details.strip() and mode=='PPM WCC':
             parts=[]
             for eq in selected:
                 parts.append(f'{eq}:')
-                parts.extend(read_template_tasks(eq))
+                # PPM WCC details show selected equipment names only, not all checklist rows
             details='\n'.join(parts)
     else: task_data,statuses,remarks,followups={}, {}, {}, {}
 
@@ -232,10 +234,18 @@ elif page=='New WCC':
                     if result is not None and result.image_data is not None and result.image_data.any(): Image.fromarray(result.image_data.astype('uint8')).save(path)
                 before_path=folder/'before.jpg';after_path=folder/'after.jpg';save_pil(before,before_path);save_pil(after,after_path)
                 create_wcc_from_template(job,client,project,location,tel,details,completion,site_img if site_img.exists() else None,site_name,site_date,site_id,hod_img if hod_img.exists() else None,hod_name,hod_date,hod_id,docs,client_img if client_img.exists() else None,client_name,client_phone,satisfaction,remarks_wcc,client_sign_date,out,before_path if before_path.exists() else None,after_path if after_path.exists() else None,ppm_number,ppm_year)
-                if mode=='PPM WCC':copy_selected_equipment_workbook(selected,cl);make_zip(folder,package)
-                else: make_zip(folder,package)
-                add_record(mode,project,', '.join(selected),job if mode=='Normal WCC' else ppm_number,out,cl or '',package)
+                if mode=='PPM WCC':
+                    copy_selected_equipment_workbook(selected,cl)
+                    checklist_pdf=export_pdf(cl,folder/'Checklist.pdf'); cl.unlink()
+                    front_pdf=export_pdf(out,folder/'WCC_Front.pdf')
+                    combined=combine_pdfs([front_pdf,checklist_pdf],folder/'PPM_WCC_With_Checklists.pdf')
+                    cl=checklist_pdf
+                else:
+                    combined=export_pdf(out,folder/'WCC.pdf')
+                make_zip(folder,package)
+                add_record(mode,project,', '.join(selected),job if mode=='Normal WCC' else ppm_number,combined,cl or '',package)
                 st.success(f'{mode} generated successfully. One page is used for Before/After photos in Normal WCC.')
+                st.download_button('📄 Save / Share PDF',combined.read_bytes(),combined.name,'application/pdf')
                 st.download_button('📦 Download WCC Package',package.read_bytes(),package.name,'application/zip')
             except Exception as e:st.exception(e)
 
@@ -245,6 +255,6 @@ else:
     for row in rows:
         with st.expander(f"{row['kind']} | {row['project'] or '-'} | {row['number'] or '-'} | {row['created_at']}"):
             st.write('Equipment:',row['equipment'] or '-')
-            for field,label,mime in [('package_path','📦 Download Package','application/zip'),('file_path','📄 Main File',None),('checklist_path','📎 Checklist', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')]:
+            for field,label,mime in [('package_path','📦 Download Package','application/zip'),('file_path','📄 Main File',None),('checklist_path','📎 Checklist', 'application/pdf')]:
                 p=Path(row[field]) if row[field] else None
-                if p and p.exists(): st.download_button(label,p.read_bytes(),p.name,mime or ('application/vnd.openxmlformats-officedocument.wordprocessingml.document' if p.suffix=='.docx' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),key=f'{field}_{row["id"]}')
+                if p and p.exists(): st.download_button(label,p.read_bytes(),p.name,mime or ('application/pdf' if p.suffix=='.pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' if p.suffix=='.docx' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),key=f'{field}_{row["id"]}')

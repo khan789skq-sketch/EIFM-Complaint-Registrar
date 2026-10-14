@@ -167,7 +167,10 @@ def create_ppm_package(selected_equipment, project, location, unit, frequency, c
             eq_tasks=(task_data or {}).get(equipment,[])
             for idx,r in enumerate(source_rows,start=1):
                 ws.cell(r,7).value='✓' if (statuses or {}).get((equipment,idx)) else ''
+                ws.cell(r,7).alignment=__import__('copy').copy(ws.cell(r,7).alignment)
+                ws.cell(r,7).alignment=__import__('openpyxl').styles.Alignment(horizontal='center',vertical='center',wrap_text=ws.cell(r,7).alignment.wrap_text)
                 ws.cell(r,8).value='✓' if (statuses or {}).get((equipment,f'no_{idx}')) else ''
+                ws.cell(r,8).alignment=__import__('openpyxl').styles.Alignment(horizontal='center',vertical='center',wrap_text=ws.cell(r,8).alignment.wrap_text)
                 ws.cell(r,9).value=(remarks or {}).get((equipment,idx),'')
                 ws.cell(r,11).value=(followups or {}).get((equipment,idx),'')
                 if idx<=len(eq_tasks): ws.cell(r,2).value=eq_tasks[idx-1]
@@ -175,7 +178,7 @@ def create_ppm_package(selected_equipment, project, location, unit, frequency, c
                 a=str(ws.cell(r,1).value or '')
                 if a.startswith('Tech. Date/Sign:') and technician: ws.cell(r,1).value=f'Tech. Date/Sign: {technician}'
                 if a.startswith('Eng./Sup Date Sign') and engineer: ws.cell(r,1).value=f'Eng./Sup Date Sign : {engineer}'
-                if a.startswith('REPORT SUMMARY') and summary and r+1<=ws.max_row: ws.cell(r+1,1).value=summary
+                if a.startswith('REPORT SUMMARY') and summary and r+1<=ws.max_row: ws.cell(r+1,1).value=summary; ws.cell(r+1,1).alignment=__import__('openpyxl').styles.Alignment(horizontal='left',vertical='top',wrap_text=True)
         wb.save(output_path)
     finally: wb.close()
     return output_path
@@ -226,3 +229,101 @@ def generate_ppm(source,equipment,meta,out):
 
 def generate_wcc(template,meta,out):
     return create_wcc_from_template(meta.get('job',''),meta.get('client',''),meta.get('project',''),meta.get('location',''),meta.get('tel',''),meta.get('details',''),meta.get('completion',''),meta.get('site_sig'),meta.get('site',''),meta.get('site_date',''),meta.get('siteid',''),meta.get('hod_sig'),meta.get('hod',''),meta.get('hod_date',''),meta.get('hodid',''),meta.get('docs',[]),meta.get('client_sig'),meta.get('cname',''),meta.get('phone',''),meta.get('satisfaction',''),meta.get('remarks',''),meta.get('client_sign_date',''),out)
+
+
+# PDF exports: original XLSX templates are kept unchanged.
+import subprocess
+from docx.enum.text import WD_BREAK
+from docx.shared import RGBColor
+
+def export_pdf(source, output_path):
+    source=Path(source); output_path=Path(output_path)
+    output_path.parent.mkdir(parents=True,exist_ok=True)
+    result=subprocess.run(['libreoffice','-env:UserInstallation=file:///tmp/eifm_lo_profile','--headless','--convert-to','pdf','--outdir',str(output_path.parent),str(source)],capture_output=True,text=True,timeout=180)
+    created=output_path.parent/(source.stem+'.pdf')
+    if result.returncode or not created.exists():
+        raise RuntimeError('PDF export failed. Install LibreOffice in the deployment environment. '+result.stderr)
+    if created!=output_path: created.replace(output_path)
+    return output_path
+
+def combine_pdfs(files,output_path):
+    from pypdf import PdfReader,PdfWriter
+    writer=PdfWriter()
+    for f in files:
+        for page in PdfReader(str(f)).pages: writer.add_page(page)
+    with open(output_path,'wb') as out: writer.write(out)
+    return Path(output_path)
+
+def _replace_span(paragraph, old, new):
+    # Edit existing runs in place, preserving the template's paragraph layout and styles.
+    runs=paragraph.runs
+    full=''.join(r.text for r in runs)
+    pos=full.find(old)
+    if pos<0:return False
+    end=pos+len(old); cur=0; inserted=False
+    for r in runs:
+        original=r.text; a=cur; b=cur+len(original);cur=b
+        if b<=pos or a>=end:continue
+        left=original[:max(0,pos-a)]
+        right=original[max(0,end-a):] if b>end else ''
+        r.text=left+(str(new) if not inserted else '')+right
+        if not inserted:
+            inserted=True
+            if old.strip('_ ') and old.strip('_ ')!='…': r.underline=True
+    return True
+
+def _set_line_value(paragraph,prefix,value,old_value):
+    if value: _replace_span(paragraph,old_value,str(value))
+
+def create_wcc_from_template(job_order,client,project,location,tel,details,completion,
+    site_sig,site_name,site_date,site_id,hod_sig,hod_name,hod_date,hod_id,
+    docs,client_sig,client_name,client_phone,satisfaction,remarks,client_sign_date,
+    output_path,before_image=None,after_image=None,ppm_number=None,ppm_year=None):
+    if not WCC_TEMPLATE.exists():raise FileNotFoundError(str(WCC_TEMPLATE))
+    doc=Document(WCC_TEMPLATE); ps=doc.paragraphs
+    jo=f'{ppm_number} Service Year {ppm_year}' if ppm_number else job_order
+    _replace_span(ps[4],'2nd PPM Service Year 2026',jo or '')
+    _replace_span(ps[5],'East & West International',client or '')
+    _replace_span(ps[6],'Marina Gate -2',project or '')
+    _replace_span(ps[7],'Flat - 3206',location or '')
+    if tel: _replace_span(ps[7],'_______',tel)
+    if completion:_replace_span(ps[15],'_____________________',completion)
+    lines=[v.strip() for v in (details or '').splitlines() if v.strip()]
+    if ppm_number and not lines:lines=['Planned Preventive Maintenance Service Complete as per attached Check List']
+    for i,line in enumerate(lines[:6]):
+        # Keep the original dotted line; insert text before it, without deleting it.
+        if line: ps[9+i].insert_paragraph_before if False else None
+        if line:
+            r=ps[9+i].runs[0]
+            r.text=line+'  '+r.text
+    for index, name, date_value, ident in [(17,site_name,site_date,site_id),(19,hod_name,hod_date,hod_id)]:
+        if name:
+            underscores='___________' if index==17 else '_____________'
+            _replace_span(ps[index],underscores,name)
+        if date_value:_replace_span(ps[index],'__________' if index==17 else '_________',date_value)
+    if site_id:ps[18].add_run(str(site_id))
+    if hod_id:_replace_span(ps[19],'____________________',hod_id)
+    if client_name:ps[26].add_run(str(client_name))
+    if client_phone:ps[28].add_run(str(client_phone))
+    if remarks:ps[35].add_run(str(remarks))
+    if client_sign_date:_replace_span(ps[39],'____/____/_____',client_sign_date)
+    if satisfaction:ps[31].add_run('Selected satisfaction: '+str(satisfaction))
+    # Keep all original enclosed-document text, marking chosen documents without rebuilding the lines.
+    for i in (21,23):
+        for label in (docs or []):
+            if label in ps[i].text:_replace_span(ps[i],label,'✓ '+label)
+    # Actual signatures go into existing blank areas, keeping labels and lines intact.
+    for image,paragraph in [(site_sig,ps[16]),(hod_sig,ps[18]),(client_sig,ps[25])]:
+        if image and Path(image).exists():
+            paragraph.add_run().add_picture(str(image),width=Inches(1.05))
+    # Normal WCC only: photos on a separate page, original WCC first page unchanged.
+    if not ppm_number and (before_image or after_image):
+        para=doc.add_paragraph();para.add_run().add_break(WD_BREAK.PAGE)
+        para=doc.add_paragraph('Before / After Pictures');para.alignment=WD_ALIGN_PARAGRAPH.CENTER
+        table=doc.add_table(rows=2,cols=2)
+        for j,(label,im) in enumerate([('Before',before_image),('After',after_image)]):
+            table.cell(0,j).text=label
+            if im and Path(im).exists():table.cell(1,j).paragraphs[0].add_run().add_picture(str(im),width=Inches(2.7))
+    output_path=Path(output_path);output_path.parent.mkdir(parents=True,exist_ok=True)
+    doc.save(output_path)
+    return output_path
