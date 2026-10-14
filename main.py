@@ -1,4 +1,5 @@
-import hashlib, json, secrets, sqlite3, zipfile
+import hashlib, json, secrets, sqlite3, zipfile, os, uuid, shutil
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from datetime import datetime
 from pathlib import Path
@@ -11,15 +12,29 @@ from generate_sheet import (EQUIPMENT_SHEETS, create_wcc_from_template, create_p
                             read_template_tasks, copy_selected_equipment_workbook)
 
 BASE = Path(__file__).resolve().parent
-DATA = Path('/data') if Path('/data').exists() else BASE / 'data'  # /data = permanent disk on server
+DATA = Path(os.environ.get('EIFM_DATA_DIR', '/data' if Path('/data').is_dir() else str(BASE / 'data')))
+DATA.mkdir(parents=True, exist_ok=True)
 OUT = DATA / 'outputs'; OUT.mkdir(parents=True, exist_ok=True)
 CL = DATA / 'building_checklists'; CL.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA / 'eifm_app.db'
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(application):
+    # A startup backup helps recovery; it is NOT a substitute for off-server backups.
+    if DB_PATH.exists():
+        backup_dir = DATA / 'backups'
+        backup_dir.mkdir(exist_ok=True)
+        with sqlite3.connect(DB_PATH) as src, sqlite3.connect(backup_dir / 'eifm_latest.db') as dest:
+            src.backup(dest)
+    yield
+
+app = FastAPI(lifespan=lifespan)
+
 
 
 def db():
-    c = sqlite3.connect(DB_PATH); c.row_factory = sqlite3.Row
+    c = sqlite3.connect(DB_PATH, timeout=30); c.row_factory = sqlite3.Row
+    c.execute('PRAGMA busy_timeout=30000')
+    c.execute('PRAGMA journal_mode=WAL')
     c.execute('CREATE TABLE IF NOT EXISTS users(email TEXT PRIMARY KEY,password_hash TEXT NOT NULL,created_at TEXT NOT NULL)')
     c.execute('CREATE TABLE IF NOT EXISTS tokens(token TEXT PRIMARY KEY,email TEXT NOT NULL,created_at TEXT NOT NULL)')
     c.execute('''CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT NOT NULL,kind TEXT NOT NULL,project TEXT,equipment TEXT,number TEXT,created_at TEXT NOT NULL,file_path TEXT,checklist_path TEXT,package_path TEXT)''')
@@ -27,6 +42,7 @@ def db():
 
 
 def now(): return datetime.now().isoformat(timespec='seconds')
+def unique_stamp(): return f'{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:12]}'
 def safe(s): return ''.join(ch if ch.isalnum() or ch in '-_ .' else '_' for ch in str(s or '').strip()).replace(' ', '_') or 'Document'
 
 def hash_password(p):
@@ -93,7 +109,18 @@ def tasks(equipment: str, u=Depends(me)): return list(_tasks(equipment))
 
 async def save_img(f, path):
     if f is None: return None
-    path.write_bytes(await f.read()); return path
+    allowed = {'.jpg', '.jpeg', '.png', '.webp'}
+    if path.suffix.lower() not in allowed: raise HTTPException(400, 'Invalid image extension')
+    max_size = 12 * 1024 * 1024
+    size = 0
+    with path.open('wb') as dest:
+        while chunk := await f.read(1024 * 1024):
+            size += len(chunk)
+            if size > max_size:
+                dest.close(); path.unlink(missing_ok=True)
+                raise HTTPException(413, 'Image must be smaller than 12 MB')
+            dest.write(chunk)
+    return path
 
 
 @app.post('/wcc')
@@ -101,7 +128,7 @@ async def wcc(data: str = Form(...), before: UploadFile = File(None), after: Upl
               site_sig: UploadFile = File(None), hod_sig: UploadFile = File(None), client_sig: UploadFile = File(None),
               u=Depends(me)):
     d = json.loads(data); g = lambda k: d.get(k, '')
-    stamp = f'{datetime.now():%Y%m%d_%H%M%S}'
+    stamp = unique_stamp()
     folder = OUT / f'WCC_{safe(g("project"))}_{stamp}'; folder.mkdir(parents=True, exist_ok=True)
     package = OUT / f'WCC_PACKAGE_{safe(g("project"))}_{stamp}.zip'
     before_p = await save_img(before, folder / 'before.jpg')
@@ -172,13 +199,32 @@ def checklists(u=Depends(me)): return sorted(p.stem for p in CL.glob('*.xlsx'))
 
 @app.post('/checklists')
 async def add_checklist(building: str = Form(...), file: UploadFile = File(...), u=Depends(me)):
-    (CL / (safe(building) + '.xlsx')).write_bytes(await file.read()); return {'ok': True}
+    if not file.filename or not file.filename.lower().endswith('.xlsx'):
+        raise HTTPException(400, 'Only .xlsx checklist files are supported')
+    if not building.strip(): raise HTTPException(400, 'Building name required')
+    destination = CL / (safe(building) + '.xlsx')
+    temporary = destination.with_name(destination.name + '.' + uuid.uuid4().hex + '.tmp')
+    total = 0
+    try:
+        with temporary.open('wb') as output:
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > 25 * 1024 * 1024: raise HTTPException(413, 'Checklist maximum is 25 MB')
+                output.write(chunk)
+        # Verify this is a real Excel workbook before replacing an existing building checklist.
+        from openpyxl import load_workbook
+        workbook = load_workbook(temporary, read_only=True)
+        workbook.close()
+        temporary.replace(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {'ok': True}
 
 
 @app.post('/ppm')
 def ppm(d: dict, u=Depends(me)):
     g = lambda k: d.get(k, ''); sel = d['equipment']
-    stamp = f'{datetime.now():%Y%m%d_%H%M%S}'
+    stamp = unique_stamp()
     folder = OUT / f'PPM_{safe(g("project"))}_{stamp}'; folder.mkdir(parents=True, exist_ok=True)
     main, cl = folder / 'PPM.xlsx', folder / 'Checklist.xlsx'
     package = OUT / f'PPM_PACKAGE_{safe(g("project"))}_{stamp}.zip'
@@ -201,3 +247,12 @@ def ppm(d: dict, u=Depends(me)):
     return {'id': cur.lastrowid}
 
 # NOTE: koi delete endpoint nahi hai -> records kabhi delete nahi hote.
+
+
+@app.get('/health')
+def health():
+    return {'status': 'ok'}
+
+@app.get('/me')
+def current_user(u=Depends(me)):
+    return {'email': u}
