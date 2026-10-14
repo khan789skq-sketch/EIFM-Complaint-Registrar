@@ -2,7 +2,6 @@ workflows:
   eifm-android:
     name: EIFM Android APK
     max_build_duration: 60
-    instance_type: linux
     environment:
       flutter: stable
     scripts:
@@ -18,8 +17,10 @@ workflows:
           if [ -f pages.dart ]; then cp pages.dart lib/pages.dart; fi
           test -f lib/main.dart
           test -f lib/pages.dart
+
       - name: Install Flutter dependencies
         script: flutter pub get
+
       - name: Set Android compile SDK to 36
         script: |
           set -eu
@@ -52,8 +53,10 @@ workflows:
               p.write_text(content)
               print('Updated file_picker compileSdk:', p)
           PY
+
       - name: Build release APK
         script: flutter build apk --release
+
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
       
