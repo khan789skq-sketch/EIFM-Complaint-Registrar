@@ -19,50 +19,53 @@ workflows:
           test -f lib/pages.dart
       - name: Install Flutter dependencies
         script: flutter pub get
-      - name: Configure Android internet, name, logo and SDK
+      - name: Configure and validate Android
         script: |
           set -eu
+          python3 EIFM_manifest_fix.py
           python3 -m pip install --user Pillow
           python3 - <<'PYCODE'
-          import os, re
+          import os
           from pathlib import Path
           from PIL import Image
-          manifest = Path('android/app/src/main/AndroidManifest.xml')
-          s = manifest.read_text()
-          if 'android.permission.INTERNET' not in s:
-              s = re.sub(r'(<application\b)', '    <uses-permission android:name="android.permission.INTERNET" />\n    \1', s, count=1)
-          s = re.sub(r'android:label="[^"]*"', 'android:label="EIFM WCC &amp; PPM"', s, count=1)
-          manifest.write_text(s)
+          from xml.etree import ElementTree as ET
           app = Path('android/app')
-          for p in [app/'build.gradle.kts', app/'build.gradle']:
-              if p.is_file():
-                  extra = '\nandroid { compileSdk = 36 }\n' if p.suffix == '.kts' else '\nandroid { compileSdkVersion 36 }\n'
-                  p.write_text(p.read_text()+extra)
-                  break
+          gradle = app/'build.gradle'
+          kts = app/'build.gradle.kts'
+          if kts.is_file():
+              p, extra = kts, '\nandroid { compileSdk = 36 }\n'
+          elif gradle.is_file():
+              p, extra = gradle, '\nandroid { compileSdkVersion 36 }\n'
           else:
               raise SystemExit('Android app Gradle file missing')
+          p.write_text(p.read_text()+extra)
           cache = Path(os.environ.get('PUB_CACHE', str(Path.home()/'.pub-cache')))
-          plugins = list((cache/'hosted').glob('*/file_picker-*/android/build.gradle*'))
-          for p in plugins:
+          for p in (cache/'hosted').glob('*/file_picker-*/android/build.gradle*'):
               extra = '\nandroid { compileSdk = 36 }\n' if p.suffix == '.kts' else '\nandroid { compileSdkVersion 36 }\n'
               p.write_text(p.read_text()+extra)
-          logo = Path('app_icon.png') if Path('app_icon.png').is_file() else Path('EIFM_logo.jpg')
-          if not logo.exists():
-              raise SystemExit('EIFM logo file missing')
-          source = Image.open(logo).convert('RGBA')
-          for folder, size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
+          logo = Path('EIFM_logo.jpg')
+          if not logo.is_file():
+              raise SystemExit('EIFM_logo.jpg missing')
+          with Image.open(logo) as im:
+              im.load()
+              source = im.convert('RGBA')
+          for density, size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
               canvas = Image.new('RGBA',(size,size),'white')
               pic = source.copy()
-              pic.thumbnail((int(size*.88),int(size*.88)), Image.Resampling.LANCZOS)
-              canvas.alpha_composite(pic, ((size-pic.width)//2,(size-pic.height)//2))
-              target = Path('android/app/src/main/res')/('mipmap-'+folder)
-              target.mkdir(parents=True,exist_ok=True)
-              canvas.convert('RGB').save(target/'ic_launcher.png')
-          for p in Path('android/app/src/main/res/mipmap-anydpi-v26').glob('ic_launcher*.xml'):
-              p.unlink()
-          print('Android internet permission, app label, icon and SDK configured')
+              pic.thumbnail((int(size*.88),int(size*.88)),Image.Resampling.LANCZOS)
+              canvas.alpha_composite(pic,((size-pic.width)//2,(size-pic.height)//2))
+              dest = app/'src/main/res'/('mipmap-'+density)
+              dest.mkdir(parents=True,exist_ok=True)
+              canvas.convert('RGB').save(dest/'ic_launcher.png')
+          adaptive = app/'src/main/res/mipmap-anydpi-v26'
+          if adaptive.exists():
+              for p in adaptive.glob('ic_launcher*.xml'):
+                  p.unlink()
+          ET.parse(app/'src/main/AndroidManifest.xml')
+          print('Android manifest XML and logo validated')
           PYCODE
       - name: Build release APK
         script: flutter build apk --release
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
+      
