@@ -42,10 +42,10 @@ def make_wcc_pdf(data, before=None, after=None, out=None, site_sig=None, hod_sig
     # Original first-row dotted line at y~222. The text sits just above it.
     for key,x,y,width in [
         ('job',216,142,175),('client',216,158,300),('project',216,174,300),
-        ('location',216,190,205),('tel',470,190,105)]:
+        ('location',216,190,205),('tel',420,190,73)]:
         val=data.get(key)
         if key=='job' and ppm:
-            val = f"{data.get('ppm_number','')} PPM Service {data.get('ppm_year','')}".strip()
+            val = str(data.get('ppm_number') or '1st PPM').strip()
         _text(page,val,x,y,width,8.0)
     # Move only the six Details dotted rows down slightly to leave a clear
     # heading-to-text gap, while keeping the original row count and endpoints.
@@ -59,14 +59,41 @@ def make_wcc_pdf(data, before=None, after=None, out=None, site_sig=None, hod_sig
         # White-out only the typed text region immediately above first dotted row;
         # leave the original dotted rows intact. Font sits above y=~222.
         _text(page, details.splitlines()[0],100,231,434,8.5,center=ppm)
+        if ppm:
+            equipment = data.get('equipment') or []
+            if isinstance(equipment, str): equipment = [e.strip() for e in equipment.split(',') if e.strip()]
+            if equipment: _text(page, ', '.join(equipment), 100, 251, 434, 8, center=True)
         for idx,line in enumerate(details.splitlines()[1:5],1):
             _text(page,line,100,231+20*idx,434,8.5)
-    for key,x,y,width in [
-        ('completion',275,357,220),('site_name',355,402,160),
-        ('hod_name',355,442,160),('client_name',355,590,160)]:
-        # Only overlay if matching original form's section can be located later.
-        # No guessed positions: these values remain in DOCX output otherwise.
-        pass
+    # Write the submitted WCC fields directly above the ORIGINAL printed underlines.
+    # Keep the existing signature image slots and all template elements unchanged.
+    for key, x, baseline, width in [
+        ('completion', 254, 354, 112),
+        ('site_name', 375, 383, 60), ('site_date', 470, 383, 53),
+        ('site_id', 376, 401, 119),
+        ('hod_name', 377, 419, 71), ('hod_date', 483, 419, 50),
+        ('hod_id', 374, 437, 106),
+        ('client_name', 128, 556, 172), ('client_phone', 149, 584, 148),
+    ]:
+        _text(page, data.get(key), x, baseline, width, 8)
+    # Fill day/month/year in the original pre-printed date slots.
+    import re
+    date_parts = re.findall(r'\d+', str(data.get('client_sign_date') or ''))
+    if len(date_parts) >= 3:
+        for piece, x, width in zip(date_parts[:3], (319, 350, 385), (18, 19, 30)):
+            _text(page, piece, x, 737, width, 7.5)
+    if data.get('remarks'):
+        remarks = str(data['remarks']).splitlines()
+        for i, line in enumerate(remarks[:3]):
+            _text(page, line, 67, 689 + i*15, 448, 8)
+    # Original checkboxes remain fixed; mark the selected ones without moving them.
+    checks = {'LPO': (164, 473), 'Invoice': (264, 473),
+              'Delivery Note': (367, 473), 'Petty Cash': (486, 473),
+              'Material Requisition': (255, 499), 'Job Completion': (401, 499)}
+    for label in data.get('docs', []):
+        if label in checks:
+            x, y = checks[label]
+            _text(page, 'X', x, y, 8, 8)
     # Signatures are confined to the original printed signature underlines.
     # Keep all other fields, dotted lines, photos and form content unchanged.
     signature_slots = [
@@ -81,9 +108,8 @@ def make_wcc_pdf(data, before=None, after=None, out=None, site_sig=None, hod_sig
             _put_fit(page, fitz.Rect(rect), content)
     if not ppm:
         p=doc.new_page(width=w,height=h)
-        # Actual EIFM logo is displayed on the photo page, not a text placeholder.
-        logo=_photo_bytes(LOGO)
-        _put_fit(p,fitz.Rect(w-137,24,w-40,103),logo)
+        # The photo page has no additional logo.
+        p.draw_rect(fitz.Rect(24.25,24.25,w-24.25,h-24.25),color=(0,0,0),width=.5)
         p.insert_text((45,65),'WORK COMPLETION CERTIFICATE',fontname='hebo',fontsize=13)
         p.insert_text((45,93),'BEFORE & AFTER PHOTOGRAPHS',fontname='hebo',fontsize=11)
         p.draw_line((45,110),(w-45,110),color=(0,0,0),width=.8)
@@ -98,6 +124,8 @@ def make_wcc_pdf(data, before=None, after=None, out=None, site_sig=None, hod_sig
         for i, pg in enumerate(doc):
             pg.draw_rect(fitz.Rect(39,816,106,834),color=None,fill=(1,1,1),overlay=True)
             pg.insert_text((40.5,827.2),f'Page {i+1} of 2',fontname='hebo',fontsize=9.96)
+            # Restore the original bottom border after masking the old page count.
+            pg.draw_line((24.25,818.85),(572.85,818.85),color=(0,0,0),width=.5)
     out=Path(out)
     out.parent.mkdir(parents=True,exist_ok=True)
     doc.save(str(out),garbage=4,deflate=True)

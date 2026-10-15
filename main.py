@@ -164,8 +164,11 @@ async def wcc(data: str = Form(...), before: UploadFile = File(None), after: Upl
         except Exception as e:
             raise HTTPException(500, f'WCC PDF error: {e}')
     if ppm:
-        copy_selected_equipment_workbook(selected, cl)
-        make_wcc_pdf(d, None, None, folder / 'PPM_WCC.pdf', site_p, hod_p, client_p)
+        try:
+            copy_selected_equipment_workbook(selected, cl)
+            make_wcc_pdf(d, None, None, folder / 'PPM_WCC.pdf', site_p, hod_p, client_p)
+        except Exception as e:
+            raise HTTPException(500, f'PPM WCC PDF error: {e}')
     zipit(folder, package)
     with db() as c:
         cur = c.execute('INSERT INTO records(email,kind,project,equipment,number,created_at,file_path,checklist_path,package_path) VALUES(?,?,?,?,?,?,?,?,?)',
@@ -240,6 +243,21 @@ def ppm(d: dict, u=Depends(me)):
                            g('service_date'), g('start'), g('finish'), td, st, rm, fo,
                            g('technician'), g('engineer'), g('summary'), main)
         copy_selected_equipment_workbook(sel, cl)
+        # New PPM must include the SAME original WCC certificate front page,
+        # in addition to the existing equipment Excel checklists.
+        cert_data = {
+            **d, 'mode': 'PPM WCC', 'ppm_number': g('ppm_number'),
+            'ppm_year': g('fiscal_year'), 'job': g('wo'),
+            'client': g('client'), 'project': g('project'),
+            'location': g('location'), 'tel': g('tel'),
+            'completion': g('service_date') + (' ' + g('finish') if g('finish') else ''),
+            'details': g('summary'), 'client_name': g('client_name'),
+            'client_phone': g('client_phone'),
+            'site_name': g('site_name'), 'site_date': g('site_date'), 'site_id': g('site_id'),
+            'hod_name': g('hod_name'), 'hod_date': g('hod_date'), 'hod_id': g('hod_id'),
+            'docs': d.get('docs', ['Job Completion']),
+        }
+        make_wcc_pdf(cert_data, out=folder / 'PPM_WCC.pdf')
     except Exception as e:
         raise HTTPException(500, f'PPM error: {e}')
     zipit(folder, package)
