@@ -9,82 +9,63 @@ workflows:
         script: |
           set -eu
           test -f pubspec.yaml
-          test -f main.dart
-          test -f pages.dart
           if [ ! -d android ]; then
             flutter create --platforms=android --project-name eifm_wcc_ppm .
           fi
           mkdir -p lib
-          cp main.dart lib/main.dart
-          cp pages.dart lib/pages.dart
+          if [ -f main.dart ]; then cp main.dart lib/main.dart; fi
+          if [ -f pages.dart ]; then cp pages.dart lib/pages.dart; fi
+          test -f lib/main.dart
+          test -f lib/pages.dart
       - name: Install Flutter dependencies
         script: flutter pub get
       - name: Configure and validate Android
         script: |
           set -eu
-          python3 - <<'PY'
+          test -f EIFM_manifest_fix.py
+          test -f EIFM_logo.jpg
+          python3 EIFM_manifest_fix.py
+          python3 -m pip install --user Pillow
+          python3 - <<'PYCODE'
           import os
-          import shutil
           from pathlib import Path
+          from PIL import Image
           from xml.etree import ElementTree as ET
-
           app = Path('android/app')
-          manifest = app / 'src/main/AndroidManifest.xml'
-          if not manifest.is_file():
-              raise SystemExit('ERROR: AndroidManifest.xml missing')
-          android_ns = 'http://schemas.android.com/apk/res/android'
-          ET.register_namespace('android', android_ns)
-          name = '{' + android_ns + '}name'
-          root = ET.parse(manifest).getroot()
-          if root.tag != 'manifest':
-              raise SystemExit('ERROR: invalid Android manifest root')
-          if not any(e.tag == 'uses-permission' and e.get(name) == 'android.permission.INTERNET' for e in root):
-              root.insert(0, ET.Element('uses-permission', {name: 'android.permission.INTERNET'}))
-          application = root.find('application')
-          if application is None:
-              raise SystemExit('ERROR: Android application element missing')
-          application.set('{' + android_ns + '}label', 'EIFM WCC & PPM')
-          if not any(e.get(name) == 'com.yalantis.ucrop.UCropActivity' for e in application.findall('activity')):
-              ET.SubElement(application, 'activity', {
-                  name: 'com.yalantis.ucrop.UCropActivity',
-                  '{' + android_ns + '}screenOrientation': 'portrait',
-                  '{' + android_ns + '}theme': '@android:style/Theme.Material.Light.NoActionBar',
-              })
-          ET.indent(root, space='    ')
-          ET.ElementTree(root).write(manifest, encoding='utf-8', xml_declaration=True)
-          ET.parse(manifest)
-
-          gradle = app / 'build.gradle'
-          kts = app / 'build.gradle.kts'
+          gradle = app/'build.gradle'
+          kts = app/'build.gradle.kts'
           if kts.is_file():
-              gradle_file = kts
-              override = '\nandroid { compileSdk = 36 }\n'
+              p, extra = kts, '\nandroid { compileSdk = 36 }\n'
           elif gradle.is_file():
-              gradle_file = gradle
-              override = '\nandroid { compileSdkVersion 36 }\n'
+              p, extra = gradle, '\nandroid { compileSdkVersion 36 }\n'
           else:
-              raise SystemExit('ERROR: Android app Gradle file missing')
-          gradle_file.write_text(gradle_file.read_text() + override)
-
-          cache = Path(os.environ.get('PUB_CACHE', str(Path.home() / '.pub-cache')))
-          for plugin in (cache / 'hosted').glob('*/file_picker-*/android/build.gradle*'):
-              override = '\nandroid { compileSdk = 36 }\n' if plugin.suffix == '.kts' else '\nandroid { compileSdkVersion 36 }\n'
-              plugin.write_text(plugin.read_text() + override)
-
-          resources = app / 'src/main/res'
-          for density in ('mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'):
-              src = Path('android_icons') / ('mipmap-' + density) / 'ic_launcher.png'
-              if not src.is_file() or src.read_bytes()[:8] != bytes((137,80,78,71,13,10,26,10)):
-                  raise SystemExit('ERROR: missing/invalid icon: ' + str(src))
-              dest = resources / ('mipmap-' + density)
+              raise SystemExit('Android app Gradle file missing')
+          p.write_text(p.read_text() + extra)
+          cache = Path(os.environ.get('PUB_CACHE', str(Path.home()/'.pub-cache')))
+          for p in (cache/'hosted').glob('*/file_picker-*/android/build.gradle*'):
+              extra = '\nandroid { compileSdk = 36 }\n' if p.suffix == '.kts' else '\nandroid { compileSdkVersion 36 }\n'
+              p.write_text(p.read_text() + extra)
+          with Image.open('EIFM_logo.jpg') as im:
+              im.load()
+              source = im.convert('RGBA')
+          for density, size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
+              canvas = Image.new('RGBA', (size,size), 'white')
+              pic = source.copy()
+              pic.thumbnail((int(size*.88),int(size*.88)), Image.Resampling.LANCZOS)
+              canvas.alpha_composite(pic, ((size-pic.width)//2,(size-pic.height)//2))
+              dest = app/'src/main/res'/('mipmap-'+density)
               dest.mkdir(parents=True, exist_ok=True)
-              shutil.copyfile(src, dest / 'ic_launcher.png')
-          adaptive = resources / 'mipmap-anydpi-v26'
+              out = dest/'ic_launcher.png'
+              canvas.convert('RGB').save(out, format='PNG')
+              with Image.open(out) as check:
+                  check.verify()
+          adaptive = app/'src/main/res/mipmap-anydpi-v26'
           if adaptive.exists():
-              for icon in adaptive.glob('ic_launcher*.xml'):
-                  icon.unlink()
-          print('PASS: Manifest XML, internet permission, app name, SDK and icons configured')
-          PY
+              for p in adaptive.glob('ic_launcher*.xml'):
+                  p.unlink()
+          ET.parse(app/'src/main/AndroidManifest.xml')
+          print('PASS: Manifest XML, internet permission and EIFM launcher icons')
+          PYCODE
       - name: Build release APK
         script: flutter build apk --release
     artifacts:
