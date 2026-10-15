@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -232,43 +231,80 @@ class _WccState extends State<WccPage> {
   String mode = 'Normal WCC', sat = '3. Good', ppmNo = '1st PPM'; bool busy = false;
 
   Future<void> pick(String k) async {
-    String? p = origs[k];
-    if (p == null) {
-      final src = await showModalBottomSheet<ImageSource>(context: context, builder: (_) => SafeArea(child: Wrap(children: [
-        ListTile(leading: const Icon(Icons.photo_camera), title: const Text('Camera'), onTap: () => Navigator.pop(context, ImageSource.camera)),
-        ListTile(leading: const Icon(Icons.photo_library), title: const Text('Gallery'), onTap: () => Navigator.pop(context, ImageSource.gallery))])));
-      if (src == null) return;
-      final x = await ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
-      if (x == null) return;
-      p = x.path; origs[k] = p;
-    }
-    // Immediately keep a usable image, even if native crop screen fails or is cancelled.
-    if (mounted) setState(() => pics[k] = File(p!));
     try {
-      final cr = await ImageCropper().cropImage(
-        sourcePath: p,
-        aspectRatio: const CropAspectRatio(ratioX: 4, ratioY: 3),
-        maxWidth: 900, maxHeight: 675,
-        compressFormat: ImageCompressFormat.jpg,
-        compressQuality: 82,
-        uiSettings: [AndroidUiSettings(
-          toolbarTitle: 'Adjust ${k.toUpperCase()} picture',
-          lockAspectRatio: false,
-        )],
+      final src = await showModalBottomSheet<ImageSource>(
+        context: context,
+        builder: (_) => SafeArea(
+          child: Wrap(children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ]),
+        ),
       );
-      if (cr != null && mounted) setState(() => pics[k] = File(cr.path));
+      if (src == null || !mounted) return;
+      // No native crop screen: select once and fit automatically in the box.
+      final x = await ImagePicker().pickImage(
+        source: src,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+        requestFullMetadata: false,
+      );
+      if (x == null || !mounted) return;
+      final file = File(x.path);
+      if (!await file.exists()) {
+        if (mounted) msg(context, 'Photo could not be opened. Please try again.');
+        return;
+      }
+      if (mounted) setState(() => pics[k] = file);
     } catch (e) {
-      if (mounted) msg(context, 'Photo selected. Crop unavailable: $e');
+      if (mounted) msg(context, 'Unable to select photo: $e');
     }
   }
 
-  Widget tile(String k, String t) => Expanded(child: Column(children: [
-        Text(t, style: const TextStyle(fontWeight: FontWeight.bold)),
-        GestureDetector(onTap: () => pick(k), child: AspectRatio(aspectRatio: 4 / 3, child: Container(
-            margin: const EdgeInsets.all(4), decoration: BoxDecoration(border: Border.all(color: Colors.green), borderRadius: BorderRadius.circular(8)),
-            child: pics[k] == null ? const Icon(Icons.add_a_photo, size: 40) : Image.file(pics[k]!, fit: BoxFit.cover)))),
-        if (pics[k] != null) TextButton(onPressed: () { origs.remove(k); pick(k); }, child: const Text('Change photo')),
-      ]));
+  Widget tile(String k, String t) => Expanded(
+    child: Column(children: [
+      Text(t, style: const TextStyle(fontWeight: FontWeight.bold)),
+      GestureDetector(
+        onTap: () => pick(k),
+        child: AspectRatio(
+          aspectRatio: 4 / 3,
+          child: Container(
+            margin: const EdgeInsets.all(4),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: Colors.green),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: pics[k] == null
+                ? const Icon(Icons.add_a_photo, size: 40)
+                : Image.file(
+                    pics[k]!,
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                    height: double.infinity,
+                    errorBuilder: (_, __, ___) =>
+                        const Center(child: Text('Photo unavailable')),
+                  ),
+          ),
+        ),
+      ),
+      if (pics[k] != null)
+        TextButton(
+          onPressed: () => pick(k),
+          child: const Text('Change photo'),
+        ),
+    ]),
+  );
 
   Future<void> gen() async {
     final ppm = mode == 'PPM WCC';
@@ -317,7 +353,7 @@ class _WccState extends State<WccPage> {
       if (ppm) ...[
         dd('PPM Number', ppmNos, ppmNo, (v) => setState(() => ppmNo = v)), tf(f, 'ppm_year', 'PPM Service Year', v: '${DateTime.now().year}'),
       ] else ...[
-        const Text('Before / After Pictures (tap = size adjust)', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('Before / After Pictures (automatically fit)', style: TextStyle(fontWeight: FontWeight.bold)),
         Row(children: [tile('before', 'Before'), tile('after', 'After')]),
       ],
       const Text('Signatures — actual signature, not typed text', style: TextStyle(fontWeight: FontWeight.bold)),
