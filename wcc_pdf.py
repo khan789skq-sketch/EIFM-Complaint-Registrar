@@ -67,9 +67,18 @@ def make_wcc_pdf(data, before=None, after=None, out=None, site_sig=None, hod_sig
         # Only overlay if matching original form's section can be located later.
         # No guessed positions: these values remain in DOCX output otherwise.
         pass
-    for path,rect in [(site_sig,(300,358,425,390)),(hod_sig,(300,410,425,442)),(client_sig,(320,632,450,663))]:
-        content=_photo_bytes(path)
-        if content: _put_fit(page,fitz.Rect(rect),content)
+    # Signatures are confined to the original printed signature underlines.
+    # Keep all other fields, dotted lines, photos and form content unchanged.
+    signature_slots = [
+        (site_sig,   (247, 358, 330, 376)),  # Site In Charge
+        (hod_sig,    (208, 393, 325, 412)),  # HOD
+        (client_sig, (185, 505, 310, 521)),  # Client Signature
+        (client_sig, (145, 709, 241, 729)),  # Client Signature (bottom)
+    ]
+    for path, rect in signature_slots:
+        content = _photo_bytes(path)
+        if content:
+            _put_fit(page, fitz.Rect(rect), content)
     if not ppm:
         p=doc.new_page(width=w,height=h)
         # Actual EIFM logo is displayed on the photo page, not a text placeholder.
