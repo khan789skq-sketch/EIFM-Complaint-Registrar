@@ -8,6 +8,7 @@ const kGreen = Color(0xFF0B5D3F);
 String api = 'https://eifm-wcc-api.onrender.com';
 String? token;
 final refresh = ValueNotifier<int>(0);
+final sessionExpired = ValueNotifier<bool>(false);
 Map<String, String> get h => {'Authorization': 'Bearer ${token ?? ''}'};
 void msg(BuildContext c, String text) { if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(text))); }
 void main() { WidgetsFlutterBinding.ensureInitialized(); runApp(const EIFMApp()); }
@@ -24,9 +25,12 @@ class _AppRootState extends State<AppRoot> {
     api = 'https://eifm-wcc-api.onrender.com';
     await p.setString('server_url', api);
     token = p.getString('token');
+    sessionExpired.addListener(onSessionExpired);
     if (mounted) setState(() => loading = false);
   }
-  Future<void> logout() async { final p = await SharedPreferences.getInstance(); await p.remove('token'); token = null; if (mounted) setState(() => tab = 0); }
+  void onSessionExpired() { if (sessionExpired.value && mounted) logout(); }
+  @override void dispose() { sessionExpired.removeListener(onSessionExpired); super.dispose(); }
+  Future<void> logout() async { final p = await SharedPreferences.getInstance(); await p.remove('token'); token = null; equipmentFuture = get('equipment'); taskFut.clear(); if (mounted) setState(() => tab = 0); }
   @override Widget build(BuildContext c) {
     if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (token == null) return LoginPage(onDone: () => setState(() {}));
@@ -48,7 +52,7 @@ class _LoginPageState extends State<LoginPage> {
         throw Exception(detail);
       }
       final t = jsonDecode(r.body)['token'] as String;
-      final p = await SharedPreferences.getInstance(); await p.setString('token', t); token = t;
+      final p = await SharedPreferences.getInstance(); await p.setString('token', t); token = t; equipmentFuture = get('equipment'); taskFut.clear(); sessionExpired.value = false;
       widget.onDone();
     } catch (e) { if (mounted) msg(context, 'Login error: $e'); }
     if (mounted) setState(() => busy = false);

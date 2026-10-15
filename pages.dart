@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -10,9 +11,27 @@ import 'package:signature/signature.dart';
 import 'main.dart';
 
 Future<dynamic> get(String p) async {
-  final r = await http.get(Uri.parse('$api/$p'), headers: h);
-  if (r.statusCode != 200) throw Exception('HTTP ${r.statusCode}: ${r.body}');
-  return jsonDecode(r.body);
+  for (var attempt = 0; attempt < 3; attempt++) {
+    try {
+      final r = await http.get(Uri.parse('$api/$p'), headers: h)
+          .timeout(const Duration(seconds: 75)); // Render Free cold start
+      if (r.statusCode == 401) {
+        sessionExpired.value = true;
+        throw Exception('Login expired. Sign in again with your existing account.');
+      }
+      if (r.statusCode == 200) return jsonDecode(r.body);
+      if (r.statusCode < 500 && r.statusCode != 429) {
+        throw Exception('HTTP ${r.statusCode}: ${r.body}');
+      }
+      if (attempt == 2) throw Exception('Server unavailable (HTTP ${r.statusCode}). Retry later.');
+    } on Exception catch (e) {
+      if (sessionExpired.value || attempt == 2) rethrow;
+      // transient connection failures only; do not retry invalid credentials
+      if (e.toString().contains('HTTP 4') && !e.toString().contains('429')) rethrow;
+    }
+    await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
+  }
+  throw Exception('Connection unavailable');
 }
 
 Future<void> shareFile(int id, String field) async {
@@ -49,7 +68,7 @@ const ppmNos = ['1st PPM', '2nd PPM', '3rd PPM', '4th PPM'];
 
 // ---------- equipment select + checklist editor (OK / Not OK / Remarks / Follow-up) ----------
 final taskFut = <String, Future<dynamic>>{};
-late Future<dynamic> equipmentFuture = get('equipment');
+Future<dynamic> equipmentFuture = get('equipment');
 
 class EqSelect extends StatefulWidget {
   final List<String> sel; final VoidCallback changed;
@@ -117,6 +136,7 @@ class DashboardPage extends StatelessWidget {
   Widget build(BuildContext c) => FutureBuilder(
       future: Future.wait([get('records'), get('equipment'), get('checklists')]),
       builder: (_, s) {
+        if (s.hasError) return Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('Connection problem: ${s.error}\nOpen New WCC and retry after reconnecting.')));
         if (!s.hasData) return const Center(child: CircularProgressIndicator());
         final d = s.data as List;
         Widget m(String t, int n) => Expanded(child: Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(children: [Text('$n', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)), Text(t, textAlign: TextAlign.center)]))));
@@ -241,15 +261,31 @@ class _WccState extends State<WccPage> {
       if (x == null) return;
       p = x.path; origs[k] = p;
     }
-    // Keep the original photo; PDF generation fits it without cropping.
+    // Immediately keep a usable image, even if native crop screen fails or is cancelled.
     if (mounted) setState(() => pics[k] = File(p!));
+    try {
+      final cr = await ImageCropper().cropImage(
+        sourcePath: p,
+        aspectRatio: const CropAspectRatio(ratioX: 4, ratioY: 3),
+        maxWidth: 900, maxHeight: 675,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 82,
+        uiSettings: [AndroidUiSettings(
+          toolbarTitle: 'Adjust ${k.toUpperCase()} picture',
+          lockAspectRatio: false,
+        )],
+      );
+      if (cr != null && mounted) setState(() => pics[k] = File(cr.path));
+    } catch (e) {
+      if (mounted) msg(context, 'Photo selected. Crop unavailable: $e');
+    }
   }
 
   Widget tile(String k, String t) => Expanded(child: Column(children: [
         Text(t, style: const TextStyle(fontWeight: FontWeight.bold)),
         GestureDetector(onTap: () => pick(k), child: AspectRatio(aspectRatio: 4 / 3, child: Container(
             margin: const EdgeInsets.all(4), decoration: BoxDecoration(border: Border.all(color: Colors.green), borderRadius: BorderRadius.circular(8)),
-            child: pics[k] == null ? const Icon(Icons.add_a_photo, size: 40) : Image.file(pics[k]!, fit: BoxFit.contain)))),
+            child: pics[k] == null ? const Icon(Icons.add_a_photo, size: 40) : Image.file(pics[k]!, fit: BoxFit.cover)))),
         if (pics[k] != null) TextButton(onPressed: () { origs.remove(k); pick(k); }, child: const Text('Change photo')),
       ]));
 
@@ -300,7 +336,7 @@ class _WccState extends State<WccPage> {
       if (ppm) ...[
         dd('PPM Number', ppmNos, ppmNo, (v) => setState(() => ppmNo = v)), tf(f, 'ppm_year', 'PPM Service Year', v: '${DateTime.now().year}'),
       ] else ...[
-        const Text('Before / After Pictures (auto-fit, no crop)', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('Before / After Pictures (tap = size adjust)', style: TextStyle(fontWeight: FontWeight.bold)),
         Row(children: [tile('before', 'Before'), tile('after', 'After')]),
       ],
       const Text('Signatures — actual signature, not typed text', style: TextStyle(fontWeight: FontWeight.bold)),
