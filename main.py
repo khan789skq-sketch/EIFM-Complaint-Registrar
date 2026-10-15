@@ -160,10 +160,12 @@ async def wcc(data: str = Form(...), before: UploadFile = File(None), after: Upl
     ppm = d.get('mode') == 'PPM WCC'; cl = folder / 'Checklist.xlsx'
     if not ppm:
         try:
-            out = make_wcc_pdf(d, before_p, after_p, folder / 'WCC.pdf')
+            make_wcc_pdf(d, before_p, after_p, folder / 'WCC.pdf', site_p, hod_p, client_p)
         except Exception as e:
             raise HTTPException(500, f'WCC PDF error: {e}')
-    if ppm: copy_selected_equipment_workbook(selected, cl)
+    if ppm:
+        copy_selected_equipment_workbook(selected, cl)
+        make_wcc_pdf(d, None, None, folder / 'PPM_WCC.pdf', site_p, hod_p, client_p)
     zipit(folder, package)
     with db() as c:
         cur = c.execute('INSERT INTO records(email,kind,project,equipment,number,created_at,file_path,checklist_path,package_path) VALUES(?,?,?,?,?,?,?,?,?)',
