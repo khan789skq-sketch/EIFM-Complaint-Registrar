@@ -1,4 +1,4 @@
-import hashlib, json, secrets, sqlite3, zipfile, os, uuid, shutil
+import hashlib, json, secrets, sqlite3, zipfile, os, uuid, shutil, subprocess, tempfile
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from datetime import datetime
@@ -167,6 +167,7 @@ async def wcc(data: str = Form(...), before: UploadFile = File(None), after: Upl
         try:
             copy_selected_equipment_workbook(selected, cl)
             make_wcc_pdf(d, None, None, folder / 'PPM_WCC.pdf', site_p, hod_p, client_p)
+            attach_ppm_excel_pages(folder / 'PPM_WCC.pdf', cl)
         except Exception as e:
             raise HTTPException(500, f'PPM WCC PDF error: {e}')
     zipit(folder, package)
@@ -174,6 +175,49 @@ async def wcc(data: str = Form(...), before: UploadFile = File(None), after: Upl
         cur = c.execute('INSERT INTO records(email,kind,project,equipment,number,created_at,file_path,checklist_path,package_path) VALUES(?,?,?,?,?,?,?,?,?)',
                         (u, d.get('mode', 'Normal WCC'), g('project'), ', '.join(selected), d.get('ppm_number') if ppm else g('job'), now(), str(out), str(cl) if ppm else '', str(package)))
     return {'id': cur.lastrowid}
+
+
+
+def attach_ppm_excel_pages(wcc_pdf: Path, excel_path: Path):
+    """Append the selected equipment sheets to the existing PPM WCC PDF.
+
+    The source WCC PDF and XLSX are not modified. Conversion uses LibreOffice's
+    native spreadsheet PDF export so sheet print settings and styling are retained.
+    """
+    from pypdf import PdfReader, PdfWriter
+
+    wcc_pdf, excel_path = Path(wcc_pdf), Path(excel_path)
+    if not wcc_pdf.is_file() or not excel_path.is_file():
+        raise FileNotFoundError('PPM WCC PDF or selected equipment workbook is missing')
+    with tempfile.TemporaryDirectory(prefix='eifm_ppm_') as tmp:
+        tmp = Path(tmp)
+        profile = (tmp / 'lo_profile').as_uri()
+        try:
+            result = subprocess.run(
+                ['libreoffice', f'-env:UserInstallation={profile}', '--headless',
+                 '--convert-to', 'pdf:calc_pdf_Export', '--outdir', str(tmp), str(excel_path)],
+                capture_output=True, text=True, timeout=240, check=False,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError('LibreOffice is required on the backend server for PPM checklist PDF attachment') from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError('PPM Excel-to-PDF conversion timed out') from exc
+        checklist_pdf = tmp / (excel_path.stem + '.pdf')
+        if result.returncode != 0 or not checklist_pdf.is_file():
+            raise RuntimeError('PPM checklist PDF conversion failed: ' + (result.stderr or result.stdout)[-600:])
+        writer = PdfWriter()
+        for source in (wcc_pdf, checklist_pdf):
+            reader = PdfReader(str(source))
+            if len(reader.pages) == 0:
+                raise RuntimeError('PPM PDF has no pages: ' + source.name)
+            for page in reader.pages:
+                writer.add_page(page)
+        combined = tmp / 'PPM_WCC_combined.pdf'
+        with combined.open('wb') as stream:
+            writer.write(stream)
+        # Replace only after successful conversion and merge.
+        shutil.copyfile(combined, wcc_pdf)
+    return wcc_pdf
 
 
 def zipit(folder, package):
@@ -258,6 +302,8 @@ def ppm(d: dict, u=Depends(me)):
             'docs': d.get('docs', ['Job Completion']),
         }
         make_wcc_pdf(cert_data, out=folder / 'PPM_WCC.pdf')
+        # PPM.xlsx contains the completed OK/Not OK ticks, remarks and follow-ups.
+        attach_ppm_excel_pages(folder / 'PPM_WCC.pdf', main)
     except Exception as e:
         raise HTTPException(500, f'PPM error: {e}')
     zipit(folder, package)
