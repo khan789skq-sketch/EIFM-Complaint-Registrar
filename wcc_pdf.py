@@ -86,14 +86,37 @@ def make_wcc_pdf(data, before=None, after=None, out=None, site_sig=None, hod_sig
         remarks = str(data['remarks']).splitlines()
         for i, line in enumerate(remarks[:3]):
             _text(page, line, 67, 689 + i*15, 448, 8)
-    # Original checkboxes remain fixed; mark the selected ones without moving them.
-    checks = {'LPO': (164, 473), 'Invoice': (264, 473),
-              'Delivery Note': (367, 473), 'Petty Cash': (486, 473),
-              'Material Requisition': (255, 499), 'Job Completion': (401, 499)}
-    for label in data.get('docs', []):
+    # Tick only selected boxes, inside the original printed rectangles.
+    checks = {'LPO': (153.4, 468.3, 176.6, 478.4),
+              'Invoice': (253.0, 468.3, 276.1, 478.4),
+              'Delivery Note': (377.7, 468.3, 400.9, 478.4),
+              'Petty Cash': (491.6, 468.3, 514.8, 478.4),
+              'Material Requisition': (244.9, 494.0, 268.0, 504.1),
+              'Job Completion': (390.9, 494.0, 414.0, 504.1)}
+    satisfaction_boxes = {
+        'Poor': (102.8, 626.4, 117.8, 636.4),
+        'Satisfied': (169.2, 626.4, 184.2, 636.4),
+        'Good': (253.0, 626.4, 268.0, 636.4),
+        'Very Good': (325.1, 626.4, 340.1, 636.4),
+        'Excellent': (419.8, 626.4, 434.8, 636.4),
+    }
+    def tick_inside(rect):
+        x0, y0, x1, y1 = rect
+        cx, cy = (x0+x1)/2, (y0+y1)/2
+        # Two short strokes form a tick entirely inside the original box.
+        page.draw_line((cx-3.0, cy), (cx-0.6, cy+2.1), color=(0,0,0), width=1.25, overlay=True)
+        page.draw_line((cx-0.6, cy+2.1), (cx+3.5, cy-2.8), color=(0,0,0), width=1.25, overlay=True)
+    selected_docs = data.get('docs') or []
+    if isinstance(selected_docs, str):
+        selected_docs = [s.strip() for s in selected_docs.split(',')]
+    for label in selected_docs:
         if label in checks:
-            x, y = checks[label]
-            _text(page, 'X', x, y, 8, 8)
+            tick_inside(checks[label])
+    selected_satisfaction = str(data.get('satisfaction') or '').strip()
+    for label, rect in satisfaction_boxes.items():
+        if selected_satisfaction == label or selected_satisfaction.endswith('. ' + label):
+            tick_inside(rect)
+            break
     # Signatures are confined to the original printed signature underlines.
     # Keep all other fields, dotted lines, photos and form content unchanged.
     signature_slots = [
@@ -131,3 +154,4 @@ def make_wcc_pdf(data, before=None, after=None, out=None, site_sig=None, hod_sig
     doc.save(str(out),garbage=4,deflate=True)
     doc.close()
     return out
+    
