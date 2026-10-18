@@ -179,6 +179,73 @@ async def wcc(data: str = Form(...), before: UploadFile = File(None), after: Upl
 
 
 
+
+# ---------- Multiple NORMAL WCC package (existing /wcc generation is unchanged) ----------
+class NormalWccBatchRequest(BaseModel):
+    ids: list[int]
+
+
+@app.post('/wcc-batch/package')
+def normal_wcc_batch_package(request: NormalWccBatchRequest, u=Depends(me)):
+    """Bundle previously generated Normal WCCs into one downloadable ZIP.
+
+    Each complaint is created by the unchanged /wcc endpoint. The batch screen
+    uploads one at a time, which avoids huge photo uploads and allows resuming.
+    No arbitrary number-of-complaints limit is imposed here.
+    """
+    ids = list(dict.fromkeys(request.ids))
+    if not ids:
+        raise HTTPException(400, 'Select at least one Normal WCC')
+    if any(not isinstance(rid, int) or rid <= 0 for rid in ids):
+        raise HTTPException(400, 'Invalid Normal WCC record number')
+    # Use fixed-size query parameters per record; no SQLite IN-clause cap.
+    with db() as conn:
+        by_id = {}
+        for rid in ids:
+            record = conn.execute(
+                'SELECT id, kind, number, package_path FROM records '
+                'WHERE email=? AND id=?', (u, rid),
+            ).fetchone()
+            if record is not None:
+                by_id[rid] = dict(record)
+    for rid in ids:
+        record = by_id.get(rid)
+        if record is None:
+            raise HTTPException(404, f'Normal WCC record {rid} not found')
+        if record['kind'] != 'Normal WCC':
+            raise HTTPException(400, f'Record {rid} is not a Normal WCC')
+        if not record['package_path'] or not Path(record['package_path']).is_file():
+            raise HTTPException(404, f'ZIP for Normal WCC record {rid} is missing')
+
+    package = OUT / f'EIFM_Normal_WCC_Batch_{unique_stamp()}.zip'
+    try:
+        with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as target:
+            for position, rid in enumerate(ids, 1):
+                record = by_id[rid]
+                # Each report keeps its OWN WCC.pdf, WCC.docx, Before/After and signatures.
+                prefix = f'{position:04d}_{safe(record["number"] or f"WCC_{rid}")}'
+                with zipfile.ZipFile(record['package_path'], 'r') as original:
+                    for member in original.infolist():
+                        if member.is_dir():
+                            continue
+                        rel = Path(member.filename)
+                        if rel.is_absolute() or '..' in rel.parts:
+                            raise ValueError('Unsafe filename in existing WCC package')
+                        with original.open(member, 'r') as source:
+                            with target.open(f'{prefix}/{rel.as_posix()}', 'w', force_zip64=True) as out:
+                                shutil.copyfileobj(source, out, 1024 * 1024)
+    except Exception:
+        package.unlink(missing_ok=True)
+        raise
+
+    # Do not accumulate one-off combined batch ZIPs on the Render filesystem.
+    from starlette.background import BackgroundTask
+    return FileResponse(
+        package, filename=package.name, media_type='application/zip',
+        background=BackgroundTask(lambda: package.unlink(missing_ok=True)),
+    )
+
+
 def attach_ppm_excel_pages(wcc_pdf: Path, excel_path: Path):
     """Append the selected equipment sheets to the existing PPM WCC PDF.
 
