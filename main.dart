@@ -19,7 +19,6 @@ class EIFMApp extends StatelessWidget {
 class AppRoot extends StatefulWidget { const AppRoot({super.key}); @override State<AppRoot> createState() => _AppRootState(); }
 class _AppRootState extends State<AppRoot> {
   bool loading = true; int tab = 0;
-  String? startupError;
   @override void initState() {
     super.initState();
     sessionExpired.addListener(onSessionExpired);
@@ -32,34 +31,31 @@ class _AppRootState extends State<AppRoot> {
       final p = await SharedPreferences.getInstance()
           .timeout(const Duration(seconds: 10));
       token = p.getString('token');
-      startupError = null;
-    } catch (_) {
-      // Do not delete the saved token or any user data on an I/O failure.
-      startupError = 'Saved login could not be loaded. Tap Retry.';
+    } catch (e) {
+      // On a fresh install or inaccessible storage, open Login instead of trapping the user.
+      // Never clear the saved token on a temporary storage problem.
+      debugPrint('EIFM startup: local session storage unavailable: $e');
+      token = null;
     } finally {
       if (mounted) setState(() => loading = false);
     }
   }
   void onSessionExpired() { if (sessionExpired.value && mounted) logout(); }
   @override void dispose() { sessionExpired.removeListener(onSessionExpired); super.dispose(); }
-  Future<void> logout() async { final p = await SharedPreferences.getInstance(); await p.remove('token'); token = null; equipmentFuture = get('equipment'); taskFut.clear(); if (mounted) setState(() => tab = 0); }
+  Future<void> logout() async {
+    try {
+      final p = await SharedPreferences.getInstance().timeout(const Duration(seconds: 5));
+      await p.remove('token').timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('EIFM logout: local session storage unavailable: $e');
+    }
+    token = null;
+    equipmentFuture = get('equipment');
+    taskFut.clear();
+    if (mounted) setState(() => tab = 0);
+  }
   @override Widget build(BuildContext c) {
     if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (startupError != null) {
-      return Scaffold(body: Center(child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.error_outline, color: kGreen, size: 48),
-          const SizedBox(height: 12),
-          Text(startupError!, textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: () {
-            setState(() { loading = true; startupError = null; });
-            restore();
-          }, child: const Text('Retry')),
-        ]),
-      )));
-    }
     if (token == null) return LoginPage(onDone: () => setState(() {}));
     final pages = [const DashboardPage(), const LibraryPage(), const PpmPage(), const WccPage(), const RecordsPage()];
     return Scaffold(appBar: AppBar(title: const Text('EIFM WCC & PPM'), actions: [IconButton(tooltip: 'Logout', onPressed: logout, icon: const Icon(Icons.logout))]), body: IndexedStack(index: tab, children: pages), bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), destinations: const [NavigationDestination(icon: Icon(Icons.dashboard), label: 'Home'), NavigationDestination(icon: Icon(Icons.apartment), label: 'Library'), NavigationDestination(icon: Icon(Icons.build), label: 'New PPM'), NavigationDestination(icon: Icon(Icons.description), label: 'New WCC'), NavigationDestination(icon: Icon(Icons.folder), label: 'My Records')]));
@@ -79,7 +75,15 @@ class _LoginPageState extends State<LoginPage> {
         throw Exception(detail);
       }
       final t = jsonDecode(r.body)['token'] as String;
-      final p = await SharedPreferences.getInstance(); await p.setString('token', t); token = t; equipmentFuture = get('equipment'); taskFut.clear(); sessionExpired.value = false;
+      // A storage-plugin problem must not stop a valid server login.
+      try {
+        final p = await SharedPreferences.getInstance().timeout(const Duration(seconds: 5));
+        await p.setString('token', t).timeout(const Duration(seconds: 5));
+      } catch (e) {
+        // Session works until the app closes; persistent login needs storage repaired.
+        debugPrint('EIFM login: token could not be saved locally: $e');
+      }
+      token = t; equipmentFuture = get('equipment'); taskFut.clear(); sessionExpired.value = false;
       widget.onDone();
     } catch (e) { if (mounted) msg(context, 'Login error: $e'); }
     if (mounted) setState(() => busy = false);
