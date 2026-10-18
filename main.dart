@@ -19,20 +19,47 @@ class EIFMApp extends StatelessWidget {
 class AppRoot extends StatefulWidget { const AppRoot({super.key}); @override State<AppRoot> createState() => _AppRootState(); }
 class _AppRootState extends State<AppRoot> {
   bool loading = true; int tab = 0;
-  @override void initState() { super.initState(); restore(); }
-  Future<void> restore() async {
-    final p = await SharedPreferences.getInstance();
-    api = 'https://eifm-wcc-api.onrender.com';
-    await p.setString('server_url', api);
-    token = p.getString('token');
+  String? startupError;
+  @override void initState() {
+    super.initState();
     sessionExpired.addListener(onSessionExpired);
-    if (mounted) setState(() => loading = false);
+    restore();
+  }
+  Future<void> restore() async {
+    try {
+      api = 'https://eifm-wcc-api.onrender.com';
+      // Loading a saved session must never leave the app on an endless spinner.
+      final p = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 10));
+      token = p.getString('token');
+      startupError = null;
+    } catch (_) {
+      // Do not delete the saved token or any user data on an I/O failure.
+      startupError = 'Saved login could not be loaded. Tap Retry.';
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
   void onSessionExpired() { if (sessionExpired.value && mounted) logout(); }
   @override void dispose() { sessionExpired.removeListener(onSessionExpired); super.dispose(); }
   Future<void> logout() async { final p = await SharedPreferences.getInstance(); await p.remove('token'); token = null; equipmentFuture = get('equipment'); taskFut.clear(); if (mounted) setState(() => tab = 0); }
   @override Widget build(BuildContext c) {
     if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (startupError != null) {
+      return Scaffold(body: Center(child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.error_outline, color: kGreen, size: 48),
+          const SizedBox(height: 12),
+          Text(startupError!, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: () {
+            setState(() { loading = true; startupError = null; });
+            restore();
+          }, child: const Text('Retry')),
+        ]),
+      )));
+    }
     if (token == null) return LoginPage(onDone: () => setState(() {}));
     final pages = [const DashboardPage(), const LibraryPage(), const PpmPage(), const WccPage(), const RecordsPage()];
     return Scaffold(appBar: AppBar(title: const Text('EIFM WCC & PPM'), actions: [IconButton(tooltip: 'Logout', onPressed: logout, icon: const Icon(Icons.logout))]), body: IndexedStack(index: tab, children: pages), bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), destinations: const [NavigationDestination(icon: Icon(Icons.dashboard), label: 'Home'), NavigationDestination(icon: Icon(Icons.apartment), label: 'Library'), NavigationDestination(icon: Icon(Icons.build), label: 'New PPM'), NavigationDestination(icon: Icon(Icons.description), label: 'New WCC'), NavigationDestination(icon: Icon(Icons.folder), label: 'My Records')]));
