@@ -157,7 +157,9 @@ def create_ppm_package(selected_equipment, project, location, unit, frequency, c
     try:
         for equipment in selected:
             ws=wb[equipment]
-            ws['C3']=project; ws['C4']=location; ws['C5']=unit; ws['C6']=frequency; ws['C7']=category; ws['C8']=equipment
+            # Map for New PPM (per equipment), scalar for existing older callers.
+            equipment_category = category.get(equipment, '') if isinstance(category, dict) else category
+            ws['C3']=project; ws['C4']=location; ws['C5']=unit; ws['C6']=frequency; ws['C7']=equipment_category; ws['C8']=equipment
             ws['K3']=fiscal_year; ws['K4']=wo_number; ws['K5']=scheduled_month; ws['K6']=service_date; ws['K7']=time_start; ws['K8']=time_finish
             for row in ws.iter_rows():
                 for cell in row:

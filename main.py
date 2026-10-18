@@ -222,8 +222,8 @@ def normal_wcc_batch_package(request: NormalWccBatchRequest, u=Depends(me)):
         with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as target:
             for position, rid in enumerate(ids, 1):
                 record = by_id[rid]
-                # Each report keeps its OWN WCC.pdf, WCC.docx, Before/After and signatures.
-                prefix = f'{position:04d}_{safe(record["number"] or f"WCC_{rid}")}'
+                # Files stay directly in one ZIP; complaint prefixes avoid filename collisions.
+                prefix = f'{position:04d}_{safe(record["number"] or "WCC")}_{rid}'
                 with zipfile.ZipFile(record['package_path'], 'r') as original:
                     for member in original.infolist():
                         if member.is_dir():
@@ -231,8 +231,9 @@ def normal_wcc_batch_package(request: NormalWccBatchRequest, u=Depends(me)):
                         rel = Path(member.filename)
                         if rel.is_absolute() or '..' in rel.parts:
                             raise ValueError('Unsafe filename in existing WCC package')
+                        flat_name = f'{prefix}_{rel.name}'
                         with original.open(member, 'r') as source:
-                            with target.open(f'{prefix}/{rel.as_posix()}', 'w', force_zip64=True) as out:
+                            with target.open(flat_name, 'w', force_zip64=True) as out:
                                 shutil.copyfileobj(source, out, 1024 * 1024)
     except Exception:
         package.unlink(missing_ok=True)
@@ -243,6 +244,61 @@ def normal_wcc_batch_package(request: NormalWccBatchRequest, u=Depends(me)):
     return FileResponse(
         package, filename=package.name, media_type='application/zip',
         background=BackgroundTask(lambda: package.unlink(missing_ok=True)),
+    )
+
+
+@app.post('/wcc-batch/pdf')
+def normal_wcc_batch_pdf(request: NormalWccBatchRequest, u=Depends(me)):
+    """One continuous PDF: each original Normal WCC, then its own photo page(s).
+
+    This ONLY combines already-generated PDFs, without reformatting WCC pages,
+    moving photos, or modifying the existing Single WCC / PPM / batch ZIP APIs.
+    """
+    from pypdf import PdfReader, PdfWriter
+    from starlette.background import BackgroundTask
+
+    ids = list(dict.fromkeys(request.ids))
+    if not ids or any(not isinstance(rid, int) or rid <= 0 for rid in ids):
+        raise HTTPException(400, 'Select at least one valid Normal WCC')
+
+    pdfs = []
+    with db() as conn:
+        for rid in ids:
+            record = conn.execute(
+                'SELECT kind, file_path FROM records WHERE email=? AND id=?',
+                (u, rid),
+            ).fetchone()
+            if record is None:
+                raise HTTPException(404, f'Normal WCC record {rid} not found')
+            if record['kind'] != 'Normal WCC':
+                raise HTTPException(400, f'Record {rid} is not a Normal WCC')
+            # The existing /wcc endpoint puts its signed WCC PDF and its OWN
+            # Before/After picture page(s) beside the unchanged WCC.docx.
+            pdf = Path(record['file_path']).with_name('WCC.pdf')
+            if not pdf.is_file():
+                raise HTTPException(404, f'Normal WCC PDF {rid} is missing on the server')
+            pdfs.append(pdf)
+
+    combined = OUT / f'EIFM_Multiple_Normal_WCC_{unique_stamp()}.pdf'
+    try:
+        writer = PdfWriter()
+        for source_pdf in pdfs:
+            reader = PdfReader(str(source_pdf))
+            if len(reader.pages) == 0:
+                raise ValueError(f'Normal WCC PDF has no pages: {source_pdf.name}')
+            for page in reader.pages:
+                writer.add_page(page)  # WCC certificate + same complaint's photo pages
+        with combined.open('wb') as out:
+            writer.write(out)
+    except Exception:
+        combined.unlink(missing_ok=True)
+        raise
+
+    return FileResponse(
+        combined,
+        filename=combined.name,
+        media_type='application/pdf',
+        background=BackgroundTask(lambda: combined.unlink(missing_ok=True)),
     )
 
 

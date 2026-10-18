@@ -65,6 +65,46 @@ String today() { final d = DateTime.now(); return '${d.day.toString().padLeft(2,
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const ppmNos = ['1st PPM', '2nd PPM', '3rd PPM', '4th PPM'];
 
+// Category is calculated for each equipment selected in New PPM.
+// Only the PPM Category display and generated checklist Category cells use it.
+const Map<String, String> ppmEquipmentCategories = {
+  // Electrical switchboards, controls and power.
+  'MDB': 'Electrical',
+  'SMDB': 'Electrical',
+  'DB': 'Electrical',
+  'ATS': 'Electrical',
+  'VFD': 'Electrical',
+  'Capacitor bank': 'Electrical',
+  'LV Room': 'Electrical',
+  'Generator': 'Electrical',
+  // HVAC is part of Mechanical maintenance.
+  'FCU': 'Mechanical',
+  'Split': 'Mechanical',
+  'FAHU': 'Mechanical',
+  'Ex Fan': 'Mechanical',
+  'Basement Ex Fan': 'Mechanical',
+  'Str Prss Un': 'Mechanical',
+  'Chiller': 'Mechanical',
+  'Chilled water pump': 'Mechanical',
+  'Garbage': 'Mechanical',
+  // Water / plumbing systems.
+  'Plumbing Service': 'Plumbing',
+  'Dosing': 'Plumbing',
+  'Transfer Pump': 'Plumbing',
+  'Sump': 'Plumbing',
+  'Booster Pump': 'Plumbing',
+  'Filter pump': 'Plumbing',
+  'Heater': 'Plumbing',
+  // Low-voltage / access and communication systems.
+  'Intercom': 'ELV',
+  'SMA': 'ELV',
+  'GB': 'ELV',
+  'Sliding': 'ELV',
+};
+String ppmCategoryFor(String equipment) =>
+    ppmEquipmentCategories[equipment] ?? 'General';
+
+
 // ---------- equipment select + checklist editor (OK / Not OK / Remarks / Follow-up) ----------
 final taskFut = <String, Future<dynamic>>{};
 Future<dynamic> equipmentFuture = get('equipment');
@@ -214,6 +254,8 @@ class _PpmState extends State<PpmPage> {
         'wo': ppmNo, // Job Order Number on the original certificate = selected 1st–4th PPM.
         'frequency': freq, 'ppm_number': ppmNo, 'month': month,
         'checklist': cl, 'equipment': sel, 'items': items(store),
+        // Each Excel equipment worksheet gets its own automatic Category.
+        'category': {for (final eq in sel) eq: ppmCategoryFor(eq)},
         // One report summary per selected equipment, never copied to other sheets.
         'summary': {for (final eq in sel) eq: f('summary_$eq').text.trim()},
         'docs': docs.toList(), 'satisfaction': sat,
@@ -242,7 +284,17 @@ class _PpmState extends State<PpmPage> {
         tf(f, 'project', 'Building / Project Name'), tf(f, 'client', 'Client'),
         tf(f, 'location', 'Location'), tf(f, 'tel', 'Tel. No.'), tf(f, 'unit', 'Unit Number'),
         dd('Frequency', ['Monthly', 'Quarterly', 'Semi-Annual', 'Annual', 'Corrective / Complaint'], freq, (v) => setState(() => freq = v)),
-        tf(f, 'category', 'Category'),
+        // Read-only preview; choosing equipment updates this automatically.
+        Padding(padding: const EdgeInsets.only(bottom: 10),
+          child: InputDecorator(
+            decoration: const InputDecoration(labelText: 'Category (Automatic)', border: OutlineInputBorder()),
+            child: Text(sel.isEmpty
+              ? 'Select equipment below'
+              : sel.length == 1
+                ? ppmCategoryFor(sel.first)
+                : sel.map((eq) => '$eq: ${ppmCategoryFor(eq)}').join(' | ')),
+          ),
+        ),
         tf(f, 'fiscal_year', 'Fiscal Year', v: '${DateTime.now().year}'),
         dd('Job Order Number', ppmNos, ppmNo, (v) => setState(() => ppmNo = v)),
         dd('Scheduled Month', months, month, (v) => setState(() => month = v)),
@@ -693,9 +745,9 @@ class _BatchNormalWccPageState extends State<_BatchNormalWccPage> {
     return id;
   }
 
-  Future<void> _shareBatchZip(List<int> ids) async {
+  Future<void> _shareBatchPdf(List<int> ids) async {
     // Only record IDs are sent: photos were already uploaded one complaint at a time.
-    final q = http.Request('POST', Uri.parse('$api/wcc-batch/package'))
+    final q = http.Request('POST', Uri.parse('$api/wcc-batch/pdf'))
       ..headers.addAll(h)
       ..headers['Content-Type'] = 'application/json'
       ..body = jsonEncode({'ids': ids});
@@ -705,15 +757,15 @@ class _BatchNormalWccPageState extends State<_BatchNormalWccPage> {
       if (response.statusCode != 200) {
         final body = await response.stream.bytesToString();
         if (response.statusCode == 401) sessionExpired.value = true;
-        throw Exception('Batch ZIP error (${response.statusCode}): $body');
+        throw Exception('Batch PDF error (${response.statusCode}): $body');
       }
       final dir = await getTemporaryDirectory();
-      final target = File('${dir.path}/EIFM_Normal_WCC_Batch_${DateTime.now().millisecondsSinceEpoch}.zip');
+      final target = File('${dir.path}/EIFM_Multiple_Normal_WCC_${DateTime.now().millisecondsSinceEpoch}.pdf');
       await response.stream.pipe(target.openWrite());
       if (!await target.exists() || await target.length() == 0) {
-        throw const FormatException('Downloaded batch ZIP is empty');
+        throw const FormatException('Downloaded combined PDF is empty');
       }
-      await Share.shareXFiles([XFile(target.path)]);
+      await Share.shareXFiles([XFile(target.path, mimeType: 'application/pdf')]);
     } finally {
       client.close();
     }
@@ -733,9 +785,9 @@ class _BatchNormalWccPageState extends State<_BatchNormalWccPage> {
         await _persistDrafts(); // Save progress after each successful WCC.
         refresh.value++;
       }
-      if (mounted) setState(() => progress = 'Creating and sharing one combined ZIP...');
+      if (mounted) setState(() => progress = 'Creating and sharing one combined PDF...');
       final ids = drafts.map((e) => e['record_id'] as int).toList();
-      await _shareBatchZip(ids);
+      await _shareBatchPdf(ids);
       if (mounted) msg(context, 'Batch ready: ${drafts.length} Normal WCCs. All saved in My Records.');
     } catch (e) {
       if (mounted) msg(context, 'Batch paused: $e. Successfully generated WCCs stay saved.');
@@ -787,8 +839,8 @@ class _BatchNormalWccPageState extends State<_BatchNormalWccPage> {
                 const SizedBox(height: 8),
                 FilledButton.icon(
                   onPressed: busy || drafts.isEmpty ? null : _generateAll,
-                  icon: const Icon(Icons.archive_outlined),
-                  label: Text('Generate All / Share 1 ZIP (${drafts.length} WCCs)'),
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: Text('Generate All / Share 1 PDF (${drafts.length} WCCs)'),
                 ),
                 if (busy) ...[
                   const SizedBox(height: 8),
