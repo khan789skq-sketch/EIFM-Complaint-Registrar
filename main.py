@@ -313,7 +313,7 @@ def _generate_ppm(d: dict, u, site_sig=None, hod_sig=None, client_sig=None):
         st[(e, i)] = it['ok']; st[(e, f'no_{i}')] = it['no']; rm[(e, i)] = it['rem']; fo[(e, i)] = it['fol']
     try:
         create_ppm_package(sel, g('project'), g('location'), g('unit'), g('frequency'), g('category'),
-                           int(g('fiscal_year') or datetime.now().year), g('wo'), g('ppm_number'), g('month'),
+                           int(g('fiscal_year') or datetime.now().year), '', g('ppm_number'), g('month'),
                            g('service_date'), g('start'), g('finish'), td, st, rm, fo,
                            g('technician'), g('engineer'), g('summary'), main)
         copy_selected_equipment_workbook(sel, cl)

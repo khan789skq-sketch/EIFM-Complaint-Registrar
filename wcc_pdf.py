@@ -1,5 +1,6 @@
 """EIFM WCC/PPM PDF from the supplied, unchanged original PDF page."""
 from pathlib import Path
+from datetime import datetime
 from io import BytesIO
 import fitz
 from PIL import Image, ImageOps
@@ -45,7 +46,9 @@ def make_wcc_pdf(data, before=None, after=None, out=None, site_sig=None, hod_sig
         ('location',216,190,205),('tel',420,190,73)]:
         val=data.get(key)
         if key=='job' and ppm:
-            val = str(data.get('ppm_number') or '1st PPM').strip()
+            ppm_number = str(data.get('ppm_number') or '1st PPM').strip()
+            ppm_year = str(data.get('ppm_year') or data.get('fiscal_year') or datetime.now().year).strip()
+            val = f'{ppm_number} Service Year {ppm_year}'
         _text(page,val,x,y,width,8.0)
     # Move only the six Details dotted rows down slightly to leave a clear
     # heading-to-text gap, while keeping the original row count and endpoints.
