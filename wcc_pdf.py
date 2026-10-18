@@ -24,6 +24,39 @@ def _put_fit(page, rect, content):
     if content:
         page.insert_image(rect, stream=content, keep_proportion=True, overlay=True)
 
+def _signature_bytes(path):
+    """Crop blank signature-pad space; keep the actual ink close to its underline."""
+    if not path or not Path(path).is_file():
+        return None
+    with Image.open(path) as original:
+        rgba = ImageOps.exif_transpose(original).convert('RGBA')
+        white = Image.new('RGBA', rgba.size, (255, 255, 255, 255))
+        white.alpha_composite(rgba)
+        clean = white.convert('RGB')
+        ink = clean.convert('L').point(lambda px: 255 if px < 238 else 0)
+        bounds = ink.getbbox()
+        if not bounds:
+            return None
+        margin = max(2, int(min(clean.size) * .015))
+        x0, y0, x1, y1 = bounds
+        clean = clean.crop((max(0, x0-margin), max(0, y0-margin),
+                            min(clean.width, x1+margin), min(clean.height, y1+margin)))
+        output = BytesIO()
+        clean.save(output, format='PNG')
+        return output.getvalue()
+
+def _put_signature(page, rect, content):
+    """Fit real ink inside the existing field, 3-4 pt above its printed line."""
+    if not content:
+        return
+    with Image.open(BytesIO(content)) as sig:
+        sw, sh = sig.size
+    scale = min(rect.width / sw, rect.height / sh)
+    draw_w, draw_h = sw * scale, sh * scale
+    x0 = rect.x0 + (rect.width - draw_w) / 2
+    page.insert_image(fitz.Rect(x0, rect.y1 - draw_h, x0 + draw_w, rect.y1),
+                      stream=content, keep_proportion=True, overlay=True)
+
 def _text(page, value, x, baseline, max_width, size=8.5, center=False):
     value = str(value or '').strip()
     if not value: return
@@ -123,15 +156,15 @@ def make_wcc_pdf(data, before=None, after=None, out=None, site_sig=None, hod_sig
     # Signatures are confined to the original printed signature underlines.
     # Keep all other fields, dotted lines, photos and form content unchanged.
     signature_slots = [
-        (site_sig,   (247, 358, 330, 376)),  # Site In Charge
-        (hod_sig,    (208, 393, 325, 412)),  # HOD
-        (client_sig, (185, 505, 310, 521)),  # Client Signature
-        (client_sig, (145, 709, 241, 729)),  # Client Signature (bottom)
+        (site_sig,   (247, 369, 330, 384)),  # 3-4 pt above Site underline
+        (hod_sig,    (208, 405, 325, 420)),  # 3-4 pt above HOD underline
+        (client_sig, (185, 515, 310, 529)),  # Client underline (upper)
+        (client_sig, (145, 717, 241, 734)),  # Client signature line (bottom)
     ]
     for path, rect in signature_slots:
-        content = _photo_bytes(path)
+        content = _signature_bytes(path)
         if content:
-            _put_fit(page, fitz.Rect(rect), content)
+            _put_signature(page, fitz.Rect(rect), content)
     if not ppm:
         p=doc.new_page(width=w,height=h)
         # The photo page has no additional logo.

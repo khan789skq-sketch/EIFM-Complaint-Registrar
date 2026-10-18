@@ -174,11 +174,14 @@ def create_ppm_package(selected_equipment, project, location, unit, frequency, c
                 ws.cell(r,9).value=(remarks or {}).get((equipment,idx),'')
                 ws.cell(r,11).value=(followups or {}).get((equipment,idx),'')
                 if idx<=len(eq_tasks): ws.cell(r,2).value=eq_tasks[idx-1]
+            # A map from New PPM holds separate notes per equipment;
+            # older single-summary callers continue to work unchanged.
+            equipment_summary = summary.get(equipment, '') if isinstance(summary, dict) else summary
             for r in range(1,ws.max_row+1):
                 a=str(ws.cell(r,1).value or '')
                 if a.startswith('Tech. Date/Sign:') and technician: ws.cell(r,1).value=f'Tech. Date/Sign: {technician}'
                 if a.startswith('Eng./Sup Date Sign') and engineer: ws.cell(r,1).value=f'Eng./Sup Date Sign : {engineer}'
-                if a.startswith('REPORT SUMMARY') and summary and r+1<=ws.max_row: ws.cell(r+1,1).value=summary; ws.cell(r+1,1).alignment=__import__('openpyxl').styles.Alignment(horizontal='left',vertical='top',wrap_text=True)
+                if a.startswith('REPORT SUMMARY') and equipment_summary and r+1<=ws.max_row: ws.cell(r+1,1).value=equipment_summary; ws.cell(r+1,1).alignment=__import__('openpyxl').styles.Alignment(horizontal='left',vertical='top',wrap_text=True)
         wb.save(output_path)
     finally: wb.close()
     return output_path

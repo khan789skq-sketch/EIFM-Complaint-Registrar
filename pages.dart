@@ -214,6 +214,8 @@ class _PpmState extends State<PpmPage> {
         'wo': ppmNo, // Job Order Number on the original certificate = selected 1st–4th PPM.
         'frequency': freq, 'ppm_number': ppmNo, 'month': month,
         'checklist': cl, 'equipment': sel, 'items': items(store),
+        // One report summary per selected equipment, never copied to other sheets.
+        'summary': {for (final eq in sel) eq: f('summary_$eq').text.trim()},
         'docs': docs.toList(), 'satisfaction': sat,
       });
       for (final e in sigs.entries) {
@@ -251,7 +253,9 @@ class _PpmState extends State<PpmPage> {
         EqSelect(sel, () => setState(() {})),
         if (sel.isEmpty) const Text('Select one or more equipment.') else EquipEditor(sel, store),
         const SizedBox(height: 10),
-        tf(f, 'technician', 'Technician Name / Sign'), tf(f, 'engineer', 'Engineer / Supervisor Name / Sign'), tf(f, 'summary', 'REPORT SUMMARY OF MAINTENANCE', lines: 3),
+        tf(f, 'technician', 'Technician Name / Sign'), tf(f, 'engineer', 'Engineer / Supervisor Name / Sign'),
+        for (final eq in sel)
+          tf(f, 'summary_$eq', 'REPORT SUMMARY OF MAINTENANCE — $eq', lines: 3),
         // Exact existing Single PPM WCC fields for the certificate front page.
         tf(f, 'client_name', 'Client Name'), tf(f, 'client_phone', 'Client Phone No.'),
         dd('Satisfaction', ['1. Poor', '2. Satisfied', '3. Good', '4. Very Good', '5. Excellent'], sat, (v) => setState(() => sat = v)),
