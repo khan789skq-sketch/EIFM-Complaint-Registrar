@@ -189,16 +189,46 @@ class PpmPage extends StatefulWidget {
 class _PpmState extends State<PpmPage> {
   late final Future<dynamic> checklistFuture = get('checklists');
   final f = F(); final sel = <String>[]; final store = <String, Map<String, dynamic>>{};
+  // These signature pads and fields are identical to the existing Single PPM WCC.
+  final sigs = {'site_sig': sc(), 'hod_sig': sc(), 'client_sig': sc()};
+  final docs = <String>{'Job Completion'};
   String freq = 'Monthly', ppmNo = '1st PPM', month = months[DateTime.now().month - 1], cl = 'Use original All-3.xlsx';
+  String sat = '3. Good';
   bool busy = false;
+
+  @override
+  void dispose() {
+    for (final controller in sigs.values) { controller.dispose(); }
+    super.dispose();
+  }
 
   Future<void> gen() async {
     if (f('project').text.trim().isEmpty || sel.isEmpty) return msg(context, 'Building / Project and at least one equipment are required.');
     setState(() => busy = true);
     try {
-      final r = await http.post(Uri.parse('$api/ppm'), headers: {...h, 'Content-Type': 'application/json'},
-          body: jsonEncode({...f.vals, 'frequency': freq, 'ppm_number': ppmNo, 'month': month, 'checklist': cl, 'equipment': sel, 'items': items(store)}));
-      if (r.statusCode == 200) { refresh.value++; if (mounted) msg(context, 'Saved successfully in My Records'); await shareFile(jsonDecode(r.body)['id'], 'package'); } else if (mounted) { msg(context, 'Error: ${r.body}'); }
+      // Only New PPM posts multipart: its real finger signatures are included.
+      // Existing /wcc and /ppm endpoints remain unchanged.
+      final q = http.MultipartRequest('POST', Uri.parse('$api/ppm-with-signatures'))..headers.addAll(h);
+      q.fields['data'] = jsonEncode({
+        ...f.vals,
+        'wo': ppmNo, // Job Order Number on the original certificate = selected 1st–4th PPM.
+        'frequency': freq, 'ppm_number': ppmNo, 'month': month,
+        'checklist': cl, 'equipment': sel, 'items': items(store),
+        'docs': docs.toList(), 'satisfaction': sat,
+      });
+      for (final e in sigs.entries) {
+        if (e.value.isNotEmpty) {
+          q.files.add(http.MultipartFile.fromBytes(e.key, (await e.value.toPngBytes())!, filename: '${e.key}.png'));
+        }
+      }
+      final r = await http.Response.fromStream(await q.send());
+      if (r.statusCode == 200) {
+        refresh.value++;
+        if (mounted) msg(context, 'Saved successfully in My Records');
+        await shareFile(jsonDecode(r.body)['id'], 'package');
+      } else if (mounted) {
+        msg(context, 'Error: ${r.body}');
+      }
     } catch (e) { if (mounted) msg(context, 'Error: $e'); }
     if (mounted) setState(() => busy = false);
   }
@@ -207,19 +237,34 @@ class _PpmState extends State<PpmPage> {
   Widget build(BuildContext c) => FutureBuilder(future: checklistFuture, builder: (_, s) => ListView(padding: const EdgeInsets.all(16), children: [
         const Text('🛠️ New PPM', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
-        tf(f, 'project', 'Building / Project Name'), tf(f, 'location', 'Location'), tf(f, 'unit', 'Unit Number'),
+        tf(f, 'project', 'Building / Project Name'), tf(f, 'client', 'Client'),
+        tf(f, 'location', 'Location'), tf(f, 'tel', 'Tel. No.'), tf(f, 'unit', 'Unit Number'),
         dd('Frequency', ['Monthly', 'Quarterly', 'Semi-Annual', 'Annual', 'Corrective / Complaint'], freq, (v) => setState(() => freq = v)),
         tf(f, 'category', 'Category'),
-        tf(f, 'fiscal_year', 'Fiscal Year', v: '${DateTime.now().year}'), tf(f, 'wo', 'WO Number'),
-        dd('PPM Number', ppmNos, ppmNo, (v) => setState(() => ppmNo = v)),
+        tf(f, 'fiscal_year', 'Fiscal Year', v: '${DateTime.now().year}'),
+        dd('Job Order Number', ppmNos, ppmNo, (v) => setState(() => ppmNo = v)),
         dd('Scheduled Month', months, month, (v) => setState(() => month = v)),
         tf(f, 'service_date', 'Date of Service (dd/mm/yyyy)', v: today()), tf(f, 'start', 'Time Start (HH:MM)', v: '08:00'), tf(f, 'finish', 'Time Finish (HH:MM)', v: '17:00'),
+        tf(f, 'completion', 'Date & Time of Completion'),
         dd('Building Checklist to attach', ['Use original All-3.xlsx', 'Use original All.xlsx', for (final n in (s.data as List? ?? [])) 'Building checklist: $n'], cl, (v) => setState(() => cl = v)),
         const Text('Equipment — select ONE or MANY', style: TextStyle(fontWeight: FontWeight.bold)),
         EqSelect(sel, () => setState(() {})),
         if (sel.isEmpty) const Text('Select one or more equipment.') else EquipEditor(sel, store),
         const SizedBox(height: 10),
         tf(f, 'technician', 'Technician Name / Sign'), tf(f, 'engineer', 'Engineer / Supervisor Name / Sign'), tf(f, 'summary', 'REPORT SUMMARY OF MAINTENANCE', lines: 3),
+        // Exact existing Single PPM WCC fields for the certificate front page.
+        tf(f, 'client_name', 'Client Name'), tf(f, 'client_phone', 'Client Phone No.'),
+        dd('Satisfaction', ['1. Poor', '2. Satisfied', '3. Good', '4. Very Good', '5. Excellent'], sat, (v) => setState(() => sat = v)),
+        tf(f, 'client_sign_date', 'Client Signature Date'), tf(f, 'remarks', 'Remarks / Suggestions', lines: 2),
+        const Text('Enclosed documents', style: TextStyle(fontWeight: FontWeight.bold)),
+        Wrap(spacing: 6, children: [for (final d in ['LPO', 'Invoice', 'Delivery Note', 'Petty Cash', 'Material Requisition', 'Job Completion'])
+          FilterChip(label: Text(d), selected: docs.contains(d), onSelected: (v) => setState(() => v ? docs.add(d) : docs.remove(d)))]),
+        const SizedBox(height: 10),
+        const Text('Signatures — actual signature, not typed text', style: TextStyle(fontWeight: FontWeight.bold)),
+        SigPad('Site in Charge Signature', sigs['site_sig']!), tf(f, 'site_name', 'Site in Charge Name'), tf(f, 'site_date', 'Site Date'), tf(f, 'site_id', 'Site ID'),
+        SigPad('HOD Signature', sigs['hod_sig']!), tf(f, 'hod_name', 'HOD Name'), tf(f, 'hod_date', 'HOD Date'), tf(f, 'hod_id', 'HOD ID'),
+        SigPad('Client Signature', sigs['client_sig']!),
+        const SizedBox(height: 10),
         FilledButton(onPressed: busy ? null : gen, child: Text(busy ? 'Please wait...' : 'Generate PPM')),
         const SizedBox(height: 30),
       ]));

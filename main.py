@@ -1,6 +1,7 @@
 import hashlib, json, secrets, sqlite3, zipfile, os, uuid, shutil, subprocess, tempfile
 from contextlib import asynccontextmanager
 from functools import lru_cache
+from starlette.concurrency import run_in_threadpool
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, Depends, Header, HTTPException, UploadFile, File, Form
@@ -272,6 +273,35 @@ async def add_checklist(building: str = Form(...), file: UploadFile = File(...),
 
 @app.post('/ppm')
 def ppm(d: dict, u=Depends(me)):
+    # Existing JSON API retained for backwards compatibility.
+    return _generate_ppm(d, u)
+
+
+@app.post('/ppm-with-signatures')
+async def ppm_with_signatures(data: str = Form(...),
+                              site_sig: UploadFile = File(None),
+                              hod_sig: UploadFile = File(None),
+                              client_sig: UploadFile = File(None),
+                              u=Depends(me)):
+    # Used ONLY by New PPM; the original /wcc endpoint is untouched.
+    try:
+        d = json.loads(data)
+        if not isinstance(d, dict):
+            raise ValueError('Expected an object')
+    except (ValueError, TypeError):
+        raise HTTPException(400, 'Invalid PPM data')
+    with tempfile.TemporaryDirectory(prefix='eifm_ppm_signatures_') as tmp:
+        p = Path(tmp)
+        paths = []
+        for f, filename in ((site_sig, 'site_signature.png'),
+                            (hod_sig, 'hod_signature.png'),
+                            (client_sig, 'client_signature.png')):
+            paths.append(await save_img(f, p / filename) if f is not None else None)
+        # Images live outside the ZIP folder; only the signed PDF + XLSX files go into ZIP.
+        return await run_in_threadpool(_generate_ppm, d, u, *paths)
+
+
+def _generate_ppm(d: dict, u, site_sig=None, hod_sig=None, client_sig=None):
     g = lambda k: d.get(k, ''); sel = d['equipment']
     stamp = unique_stamp()
     folder = OUT / f'PPM_{safe(g("project"))}_{stamp}'; folder.mkdir(parents=True, exist_ok=True)
@@ -294,14 +324,15 @@ def ppm(d: dict, u=Depends(me)):
             'ppm_year': g('fiscal_year'), 'job': g('wo'),
             'client': g('client'), 'project': g('project'),
             'location': g('location'), 'tel': g('tel'),
-            'completion': g('service_date') + (' ' + g('finish') if g('finish') else ''),
+            'completion': g('completion') or (g('service_date') + (' ' + g('finish') if g('finish') else '')) ,
             'details': g('summary'), 'client_name': g('client_name'),
             'client_phone': g('client_phone'),
             'site_name': g('site_name'), 'site_date': g('site_date'), 'site_id': g('site_id'),
             'hod_name': g('hod_name'), 'hod_date': g('hod_date'), 'hod_id': g('hod_id'),
             'docs': d.get('docs', ['Job Completion']),
         }
-        make_wcc_pdf(cert_data, out=folder / 'PPM_WCC.pdf')
+        make_wcc_pdf(cert_data, out=folder / 'PPM_WCC.pdf',
+                     site_sig=site_sig, hod_sig=hod_sig, client_sig=client_sig)
         # PPM.xlsx contains the completed OK/Not OK ticks, remarks and follow-ups.
         attach_ppm_excel_pages(folder / 'PPM_WCC.pdf', main)
     except Exception as e:
